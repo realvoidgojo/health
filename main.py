@@ -113,11 +113,28 @@ def customer_profile_menu():
             print(f"Phone: {current_user['phone']}")
             print(f"DOB: {current_user['date_of_birth']}")
         elif choice == 2:
-            phone = get_input("New Phone Number: ")
+            print("\n1. Update Name")
+            print("2. Update Phone")
+            print("3. Update Date of Birth")
+            print("0. Cancel")
+            sub_choice = get_input("Select field to update: ", cast_type=int)
+            
             try:
-                execute_query("UPDATE users SET phone = ? WHERE user_id = ?", (phone, current_user['user_id']))
-                current_user['phone'] = phone
-                print_success("Profile updated.")
+                if sub_choice == 1:
+                    new_val = get_input("New Name: ")
+                    execute_query("UPDATE users SET full_name = ? WHERE user_id = ?", (new_val, current_user['user_id']))
+                    current_user['full_name'] = new_val
+                    print_success("Profile updated.")
+                elif sub_choice == 2:
+                    new_val = get_input("New Phone Number: ")
+                    execute_query("UPDATE users SET phone = ? WHERE user_id = ?", (new_val, current_user['user_id']))
+                    current_user['phone'] = new_val
+                    print_success("Profile updated.")
+                elif sub_choice == 3:
+                    new_val = get_input("New DOB (YYYY-MM-DD): ")
+                    execute_query("UPDATE users SET date_of_birth = ? WHERE user_id = ?", (new_val, current_user['user_id']))
+                    current_user['date_of_birth'] = new_val
+                    print_success("Profile updated.")
             except Exception as e:
                 print_error(f"Failed to update profile: {e}")
         elif choice == 3:
@@ -154,6 +171,11 @@ def customer_policy_menu():
                 print(f"Details: {p['coverage_details']}\n")
         elif choice == 2:
             policy_id = get_input("Enter Policy ID to purchase: ", cast_type=int)
+            master = fetch_one("SELECT * FROM master_policies WHERE policy_id = ? AND is_active = 1", (policy_id,))
+            if not master:
+                print_error("Invalid or inactive Policy ID.")
+                continue
+                
             nominee = get_input("Nominee Name: ")
             relation = get_input("Nominee Relation: ")
             try:
@@ -174,23 +196,45 @@ def customer_policy_menu():
         elif choice == 4:
             cp_id = get_input("Enter Customer Policy ID: ", cast_type=int)
             new_nominee = get_input("New Nominee Name: ")
+            new_relation = get_input("New Nominee Relation: ")
             try:
-                execute_query("UPDATE customer_policies SET nominee_name = ? WHERE customer_policy_id = ? AND customer_id = ? AND status = 'ACTIVE'", (new_nominee, cp_id, current_user['user_id']))
-                print_success("Nominee updated.")
+                rows = execute_query("UPDATE customer_policies SET nominee_name = ?, nominee_relation = ? WHERE customer_policy_id = ? AND customer_id = ? AND status = 'ACTIVE'", (new_nominee, new_relation, cp_id, current_user['user_id']))
+                if rows > 0:
+                    print_success("Nominee updated.")
+                else:
+                    print_error("Policy not found or not ACTIVE.")
             except Exception as e:
                 print_error(f"Failed to update nominee: {e}")
         elif choice == 5:
             cp_id = get_input("Enter Customer Policy ID to renew: ", cast_type=int)
+            policy = fetch_one("SELECT * FROM customer_policies WHERE customer_policy_id = ? AND customer_id = ?", (cp_id, current_user['user_id']))
+            if not policy:
+                print_error("Policy not found.")
+                continue
+            if policy['status'] != 'EXPIRED':
+                print_error("Only EXPIRED policies can be renewed.")
+                continue
+                
             try:
-                execute_query("UPDATE customer_policies SET status = 'ACTIVE' WHERE customer_policy_id = ? AND customer_id = ?", (cp_id, current_user['user_id']))
-                print_success("Policy renewed.")
+                # Add 1 year to expiry date
+                old_expiry = datetime.strptime(policy['expiry_date'], "%Y-%m-%d")
+                new_expiry = old_expiry.replace(year=old_expiry.year + 1).strftime("%Y-%m-%d")
+            except Exception:
+                new_expiry = datetime.now().replace(year=datetime.now().year + 1).strftime("%Y-%m-%d")
+                
+            try:
+                execute_query("UPDATE customer_policies SET status = 'ACTIVE', expiry_date = ? WHERE customer_policy_id = ?", (new_expiry, cp_id))
+                print_success(f"Policy renewed. New expiry date: {new_expiry}")
             except Exception as e:
                 print_error(f"Failed to renew policy: {e}")
         elif choice == 6:
             cp_id = get_input("Enter Customer Policy ID to cancel: ", cast_type=int)
             try:
-                execute_query("UPDATE customer_policies SET status = 'CANCELLED' WHERE customer_policy_id = ? AND customer_id = ? AND status = 'ACTIVE'", (cp_id, current_user['user_id']))
-                print_success("Policy cancelled.")
+                rows = execute_query("UPDATE customer_policies SET status = 'CANCELLED' WHERE customer_policy_id = ? AND customer_id = ? AND status = 'ACTIVE'", (cp_id, current_user['user_id']))
+                if rows > 0:
+                    print_success("Policy cancelled.")
+                else:
+                    print_error("Policy not found or not ACTIVE.")
             except Exception as e:
                 print_error(f"Failed to cancel policy: {e}")
         elif choice == 0:
@@ -240,8 +284,8 @@ def customer_claim_menu():
                 execute_query("UPDATE claims SET additional_details = ?, status = 'UNDER_REVIEW' WHERE claim_id = ?", (details, claim_id))
                 print_success("Claim updated successfully.")
                 
-                # We should log to claim history that customer updated, but usually officer logs it. We can add a generic log here if needed.
-                execute_query("INSERT INTO claim_history (claim_id, officer_id, action_taken, remarks) VALUES (?, ?, ?, ?)", (claim_id, 1, 'CUSTOMER_UPDATED', 'Customer updated claim details')) # Using admin (1) as system proxy
+                # Log to claim history that customer updated
+                execute_query("INSERT INTO claim_history (claim_id, officer_id, action_taken, remarks) VALUES (?, ?, ?, ?)", (claim_id, current_user['user_id'], 'CUSTOMER_UPDATED', 'Customer updated claim details'))
             except Exception as e:
                 print_error(f"Failed to update claim: {e}")
         elif choice == 0:
@@ -371,6 +415,7 @@ def admin_user_management():
         print("1. View All Users")
         print("2. Search by Email")
         print("3. View Reactivation Requests")
+        print("4. Assign/Reassign Policy Agent")
         print("0. Back")
         choice = get_input("Select an option: ", cast_type=int)
         
@@ -392,13 +437,40 @@ def admin_user_management():
                 continue
             for r in requests:
                 print(f"Request ID: {r['request_id']} | User: {r['email']} | Date: {r['request_date']}")
-            req_id = get_input("Enter Request ID to approve (0 to cancel): ", cast_type=int)
+            req_id = get_input("Enter Request ID to process (0 to cancel): ", cast_type=int)
             if req_id != 0:
                 req = fetch_one("SELECT * FROM reactivation_requests WHERE request_id = ?", (req_id,))
                 if req:
-                    execute_query("UPDATE users SET is_deleted = 0, is_active = 1 WHERE user_id = ?", (req['user_id'],))
-                    execute_query("UPDATE reactivation_requests SET status = 'APPROVED' WHERE request_id = ?", (req_id,))
-                    print_success("User account reactivated.")
+                    action = get_input("Action [A=Approve, R=Reject]: ").upper()
+                    remarks = get_input("Remarks: ")
+                    if action == 'A':
+                        execute_query("UPDATE users SET is_deleted = 0, is_active = 1 WHERE user_id = ?", (req['user_id'],))
+                        execute_query("UPDATE reactivation_requests SET status = 'APPROVED', admin_remarks = ? WHERE request_id = ?", (remarks, req_id))
+                        print_success("User account reactivated.")
+                    elif action == 'R':
+                        execute_query("UPDATE reactivation_requests SET status = 'REJECTED', admin_remarks = ? WHERE request_id = ?", (remarks, req_id))
+                        print_success("Reactivation request rejected.")
+                    else:
+                        print_error("Invalid action.")
+        elif choice == 4:
+            c_id = get_input("Enter Customer User ID: ", cast_type=int)
+            customer = fetch_one("SELECT * FROM users WHERE user_id = ? AND role = 'CUSTOMER'", (c_id,))
+            if not customer:
+                print_error("Customer not found.")
+                continue
+                
+            agents = fetch_all("SELECT user_id, full_name FROM users WHERE role = 'POLICY_AGENT' AND is_active = 1")
+            print("\nAvailable Policy Agents:")
+            for a in agents:
+                print(f"Agent ID: {a['user_id']} | Name: {a['full_name']}")
+                
+            a_id = get_input("Enter Policy Agent ID to assign: ", cast_type=int)
+            try:
+                execute_query("UPDATE users SET assigned_agent_id = ? WHERE user_id = ?", (a_id, c_id))
+                execute_query("UPDATE customer_policies SET assigned_agent_id = ? WHERE customer_id = ? AND status = 'PENDING_APPROVAL'", (a_id, c_id))
+                print_success("Agent assigned successfully.")
+            except Exception as e:
+                print_error(f"Failed to assign agent: {e}")
         elif choice == 0:
             break
 
@@ -472,6 +544,7 @@ def admin_reports():
         display_header("SYSTEM REPORTS")
         print("1. Active Policies Report")
         print("2. Approved Claims Report")
+        print("3. View All Customer Policies")
         print("0. Back")
         choice = get_input("Select an option: ", cast_type=int)
         
@@ -481,6 +554,12 @@ def admin_reports():
         elif choice == 2:
             count = fetch_one("SELECT COUNT(*) as c FROM claims WHERE status = 'APPROVED'")['c']
             print_info(f"Total Approved Claims: {count}")
+        elif choice == 3:
+            policies = fetch_all("SELECT cp.*, mp.policy_name, u.email FROM customer_policies cp JOIN master_policies mp ON cp.policy_id = mp.policy_id JOIN users u ON cp.customer_id = u.user_id")
+            if not policies:
+                print_info("No policies found.")
+            for p in policies:
+                print(f"CP ID: {p['customer_policy_id']} | Customer: {p['email']} | Policy: {p['policy_name']} | Status: {p['status']}")
         elif choice == 0:
             break
 

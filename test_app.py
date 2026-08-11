@@ -192,7 +192,7 @@ class TestHIMSApp(unittest.TestCase):
         req_id = req['request_id']
         
         # Admin approves
-        with patch('builtins.input', side_effect=['3', str(req_id), '0']):
+        with patch('builtins.input', side_effect=['3', str(req_id), 'A', 'Approved', '0']):
             main.admin_user_management()
             
         user = database.fetch_one("SELECT * FROM users WHERE user_id = ?", (user_id,))
