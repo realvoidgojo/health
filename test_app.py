@@ -28,9 +28,9 @@ class TestHIMSApp(unittest.TestCase):
         self.patcher.start()
         
         # Rebuild schema and seed data in memory
-        sql_script = init_db.parse_sql_from_markdown("schema.md")
+        sql_script = init_db.SCHEMA_SQL
         hashed_admin_pw = database.hash_password("admin123")
-        sql_script = sql_script.replace("'admin123'", f"'{hashed_admin_pw}'")
+        sql_script = sql_script.replace("{admin_pw_placeholder}", hashed_admin_pw)
         self.conn.executescript(sql_script)
         self.conn.commit()
         
