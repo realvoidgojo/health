@@ -1,8 +1,10 @@
+import sys
 import sqlite3
 import hashlib
 import contextlib
 import string
 import re
+import getpass
 
 DB_NAME = "hims.db"
 
@@ -59,11 +61,60 @@ def sanitize_input(value, cast_type=str, allow_empty=False):
     except ValueError:
         raise ValueError(f"Invalid input type. Expected {cast_type.__name__}.")
 
-def get_input(prompt, cast_type=str, allow_empty=False):
+def getpass_asterisk(prompt="Password: "):
+    """Reads password character-by-character and echoes '*' for visual feedback."""
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+    
+    password = []
+    try:
+        import termios
+        import tty
+        
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            while True:
+                ch = sys.stdin.read(1)
+                if ch in ('\r', '\n'):
+                    sys.stdout.write('\r\n')
+                    sys.stdout.flush()
+                    break
+                elif ch in ('\x08', '\x7f'):  # Backspace
+                    if password:
+                        password.pop()
+                        sys.stdout.write('\b \b')
+                        sys.stdout.flush()
+                elif ch == '\x03':  # Ctrl+C
+                    sys.stdout.write('\r\n')
+                    sys.stdout.flush()
+                    raise KeyboardInterrupt
+                else:
+                    password.append(ch)
+                    sys.stdout.write('*')
+                    sys.stdout.flush()
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    except Exception:
+        # Fallback if termios is not supported or non-interactive
+        return getpass.getpass(prompt)
+        
+    return "".join(password)
+
+def get_input(prompt, cast_type=str, allow_empty=False, is_password=False):
     """Helper to get and sanitize input from the user."""
     while True:
         try:
-            val = input(prompt)
+            # Check if input is mocked (e.g. in unit tests) or sys.stdin is not a tty
+            is_mocked = type(input).__name__ != 'builtin_function_or_method' or not sys.stdin.isatty()
+            if is_password and not is_mocked:
+                try:
+                    val = getpass_asterisk(prompt)
+                except Exception:
+                    val = input(prompt)
+            else:
+                val = input(prompt)
             return sanitize_input(val, cast_type, allow_empty)
         except ValueError as e:
             print_error(str(e))

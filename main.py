@@ -37,7 +37,7 @@ def register_user():
     display_header("REGISTER NEW ACCOUNT")
     name = get_input("Full Name: ")
     email = get_input("Email Address: ")
-    password = get_input("Password: ")
+    password = get_input("Password: ", is_password=True)
     phone = get_input("Phone Number: ")
     dob = get_input("Date of Birth (YYYY-MM-DD): ")
     
@@ -67,7 +67,7 @@ def login_user():
     global current_user
     display_header("LOGIN")
     email = get_input("Email: ")
-    password = get_input("Password: ")
+    password = get_input("Password: ", is_password=True)
     
     hashed_pw = hash_password(password)
     user = fetch_one("SELECT * FROM users WHERE email = ? AND password = ?", (email, hashed_pw))
@@ -91,7 +91,7 @@ def login_user():
 def request_reactivation():
     display_header("REQUEST ACCOUNT REACTIVATION")
     email = get_input("Email: ")
-    password = get_input("Password: ")
+    password = get_input("Password: ", is_password=True)
     
     hashed_pw = hash_password(password)
     user = fetch_one("SELECT * FROM users WHERE email = ? AND password = ?", (email, hashed_pw))
@@ -187,18 +187,34 @@ def customer_policy_menu():
         
         if choice == 1:
             policies = fetch_all("SELECT * FROM master_policies WHERE is_active = 1")
+            CARD_WIDTH = 58
+            INNER_WIDTH = 54
+            
             for p in policies:
-                wrapped_details = textwrap.wrap(p['coverage_details'], width=48)
-                print(f"{Colors.CYAN}┌────────────────────────────────────────────────────────┐{Colors.RESET}")
-                print(f"{Colors.CYAN}│{Colors.RESET} {Colors.GREEN}[ID: {p['policy_id']}]{Colors.RESET} {Colors.YELLOW}{p['policy_name']}{Colors.RESET}")
-                print(f"{Colors.CYAN}├────────────────────────────────────────────────────────┤{Colors.RESET}")
-                print(f"{Colors.CYAN}│{Colors.RESET} Category    : {p['category']}")
-                print(f"{Colors.CYAN}│{Colors.RESET} Sum Insured : {Colors.GREEN}{format_inr(p['sum_insured'])}{Colors.RESET}")
-                print(f"{Colors.CYAN}│{Colors.RESET} Premium     : {Colors.YELLOW}{format_inr(p['premium_amount'])}{Colors.RESET}")
-                print(f"{Colors.CYAN}│{Colors.RESET} Coverage Details:")
+                print(f"{Colors.CYAN}┌{'─' * CARD_WIDTH}┐{Colors.RESET}")
+                
+                # Header row
+                header_text = f" [{p['policy_id']}] {p['policy_name']}"
+                print(f"{Colors.CYAN}│{Colors.RESET}{Colors.GREEN}{header_text.ljust(CARD_WIDTH)}{Colors.RESET}{Colors.CYAN}│{Colors.RESET}")
+                print(f"{Colors.CYAN}├{'─' * CARD_WIDTH}┤{Colors.RESET}")
+                
+                # Fields
+                cat_line = f" Category    : {p['category']}"
+                sum_line = f" Sum Insured : {format_inr(p['sum_insured'])}"
+                prem_line = f" Premium     : {format_inr(p['premium_amount'])}"
+                det_title = " Coverage Details:"
+                
+                print(f"{Colors.CYAN}│{Colors.RESET}{cat_line.ljust(CARD_WIDTH)}{Colors.CYAN}│{Colors.RESET}")
+                print(f"{Colors.CYAN}│{Colors.RESET}{sum_line.ljust(CARD_WIDTH)}{Colors.CYAN}│{Colors.RESET}")
+                print(f"{Colors.CYAN}│{Colors.RESET}{prem_line.ljust(CARD_WIDTH)}{Colors.CYAN}│{Colors.RESET}")
+                print(f"{Colors.CYAN}│{Colors.RESET}{det_title.ljust(CARD_WIDTH)}{Colors.CYAN}│{Colors.RESET}")
+                
+                wrapped_details = textwrap.wrap(p['coverage_details'], width=INNER_WIDTH)
                 for line in wrapped_details:
-                    print(f"{Colors.CYAN}│{Colors.RESET}   • {line}")
-                print(f"{Colors.CYAN}└────────────────────────────────────────────────────────┘{Colors.RESET}\n")
+                    d_line = f"   • {line}"
+                    print(f"{Colors.CYAN}│{Colors.RESET}{d_line.ljust(CARD_WIDTH)}{Colors.CYAN}│{Colors.RESET}")
+                    
+                print(f"{Colors.CYAN}└{'─' * CARD_WIDTH}┘{Colors.RESET}\n")
         elif choice == 2:
             policy_id = get_input("Enter Policy ID to purchase: ", cast_type=int)
             master = fetch_one("SELECT * FROM master_policies WHERE policy_id = ? AND is_active = 1", (policy_id,))
@@ -521,7 +537,7 @@ def admin_agent_management():
         if choice == 1:
             name = get_input("Full Name: ")
             email = get_input("Email: ")
-            password = get_input("Password: ")
+            password = get_input("Password: ", is_password=True)
             phone = get_input("Phone: ")
             dob = get_input("DOB (YYYY-MM-DD): ")
             role = get_input("Role (POLICY_AGENT / CLAIM_OFFICER): ").upper()
