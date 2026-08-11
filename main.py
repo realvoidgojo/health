@@ -31,7 +31,7 @@ def display_header(title):
     print(f"{Colors.CYAN}{'='*58}{Colors.RESET}")
 
 def print_card(title, fields, width=58):
-    """Prints a structured, beautifully formatted ASCII card for object details."""
+    """Prints a structured, beautifully formatted ASCII card for object details with multi-line wrapping."""
     print(f"\n{Colors.CYAN}┌{'─' * width}┐{Colors.RESET}")
     title_str = f" {title}"
     padding = width - len(title_str)
@@ -40,14 +40,29 @@ def print_card(title, fields, width=58):
         padding = 0
     print(f"{Colors.CYAN}│{Colors.RESET}{Colors.YELLOW}{title_str}{' '*padding}{Colors.RESET}{Colors.CYAN}│{Colors.RESET}")
     print(f"{Colors.CYAN}├{'─' * width}┤{Colors.RESET}")
+    
+    val_width = width - 22  # Account for label column (18) + prefix spaces and colon (4)
     for label, val in fields:
         val_str = str(val) if val is not None else "N/A"
-        line_str = f" {label:<18}: {val_str}"
-        pad = width - len(line_str)
+        wrapped_val = textwrap.wrap(val_str, width=val_width)
+        if not wrapped_val:
+            wrapped_val = [""]
+            
+        first_line = f" {label:<18}: {wrapped_val[0]}"
+        pad = width - len(first_line)
         if pad < 0:
-            line_str = line_str[:width]
+            first_line = first_line[:width]
             pad = 0
-        print(f"{Colors.CYAN}│{Colors.RESET}{line_str}{' '*pad}{Colors.CYAN}│{Colors.RESET}")
+        print(f"{Colors.CYAN}│{Colors.RESET}{first_line}{' '*pad}{Colors.CYAN}│{Colors.RESET}")
+        
+        for extra_line in wrapped_val[1:]:
+            cont_line = f" {' '*18}  {extra_line}"
+            pad = width - len(cont_line)
+            if pad < 0:
+                cont_line = cont_line[:width]
+                pad = 0
+            print(f"{Colors.CYAN}│{Colors.RESET}{cont_line}{' '*pad}{Colors.CYAN}│{Colors.RESET}")
+            
     print(f"{Colors.CYAN}└{'─' * width}┘{Colors.RESET}")
 
 # ---------------------------------------------------------
@@ -216,34 +231,13 @@ def customer_policy_menu():
         
         if choice == 1:
             policies = fetch_all("SELECT * FROM master_policies WHERE is_active = 1")
-            CARD_WIDTH = 58
-            INNER_WIDTH = 54
-            
             for p in policies:
-                print(f"{Colors.CYAN}┌{'─' * CARD_WIDTH}┐{Colors.RESET}")
-                
-                # Header row
-                header_text = f" [{p['policy_id']}] {p['policy_name']}"
-                print(f"{Colors.CYAN}│{Colors.RESET}{Colors.GREEN}{header_text.ljust(CARD_WIDTH)}{Colors.RESET}{Colors.CYAN}│{Colors.RESET}")
-                print(f"{Colors.CYAN}├{'─' * CARD_WIDTH}┤{Colors.RESET}")
-                
-                # Fields
-                cat_line = f" Category    : {p['category']}"
-                sum_line = f" Sum Insured : {format_inr(p['sum_insured'])}"
-                prem_line = f" Premium     : {format_inr(p['premium_amount'])}"
-                det_title = " Coverage Details:"
-                
-                print(f"{Colors.CYAN}│{Colors.RESET}{cat_line.ljust(CARD_WIDTH)}{Colors.CYAN}│{Colors.RESET}")
-                print(f"{Colors.CYAN}│{Colors.RESET}{sum_line.ljust(CARD_WIDTH)}{Colors.CYAN}│{Colors.RESET}")
-                print(f"{Colors.CYAN}│{Colors.RESET}{prem_line.ljust(CARD_WIDTH)}{Colors.CYAN}│{Colors.RESET}")
-                print(f"{Colors.CYAN}│{Colors.RESET}{det_title.ljust(CARD_WIDTH)}{Colors.CYAN}│{Colors.RESET}")
-                
-                wrapped_details = textwrap.wrap(p['coverage_details'], width=INNER_WIDTH)
-                for line in wrapped_details:
-                    d_line = f"   • {line}"
-                    print(f"{Colors.CYAN}│{Colors.RESET}{d_line.ljust(CARD_WIDTH)}{Colors.CYAN}│{Colors.RESET}")
-                    
-                print(f"{Colors.CYAN}└{'─' * CARD_WIDTH}┘{Colors.RESET}\n")
+                print_card(f"[{p['policy_id']}] {p['policy_name']}", [
+                    ("Category", p['category']),
+                    ("Sum Insured", format_inr(p['sum_insured'])),
+                    ("Premium", format_inr(p['premium_amount'])),
+                    ("Coverage Details", p['coverage_details'])
+                ])
         elif choice == 2:
             policy_id = get_input("Enter Policy ID to purchase: ", cast_type=int)
             master = fetch_one("SELECT * FROM master_policies WHERE policy_id = ? AND is_active = 1", (policy_id,))
@@ -733,13 +727,21 @@ def admin_claim_management():
         choice = get_input("Select an option: ", cast_type=int)
         
         if choice == 1:
-            claims = fetch_all("SELECT * FROM claims WHERE status = 'PENDING_ASSIGNMENT'")
+            claims = fetch_all("""
+                SELECT c.*, u.full_name as cust_name, u.email as cust_email, mp.policy_name
+                FROM claims c
+                JOIN users u ON c.customer_id = u.user_id
+                JOIN customer_policies cp ON c.customer_policy_id = cp.customer_policy_id
+                JOIN master_policies mp ON cp.policy_id = mp.policy_id
+                WHERE c.status = 'PENDING_ASSIGNMENT'
+            """)
             if not claims:
                 print_info("No unassigned claims in pool.")
             for c in claims:
                 print_card(f"UNASSIGNED CLAIM #{c['claim_id']}", [
-                    ("Customer ID", c['customer_id']),
-                    ("Policy ID", c['customer_policy_id']),
+                    ("Customer Name", c['cust_name']),
+                    ("Customer Email", c['cust_email']),
+                    ("Policy Plan", f"{c['policy_name']} (ID: {c['customer_policy_id']})"),
                     ("Claim Amount", format_inr(c['claim_amount'])),
                     ("Claim Reason", c['claim_reason']),
                     ("Filed At", c['filed_at'])
@@ -758,29 +760,46 @@ def admin_claim_management():
             except Exception as e:
                 print_error(f"Failed to assign claim: {e}")
         elif choice == 3:
-            claims = fetch_all("SELECT * FROM claims")
+            claims = fetch_all("""
+                SELECT c.*, u.full_name as cust_name, o.full_name as officer_name, mp.policy_name 
+                FROM claims c
+                JOIN users u ON c.customer_id = u.user_id
+                LEFT JOIN users o ON c.claim_officer_id = o.user_id
+                JOIN customer_policies cp ON c.customer_policy_id = cp.customer_policy_id
+                JOIN master_policies mp ON cp.policy_id = mp.policy_id
+            """)
             if not claims:
                 print_info("No claims found.")
             for c in claims:
                 print_card(f"CLAIM #{c['claim_id']}", [
-                    ("Customer ID", c['customer_id']),
+                    ("Customer Name", c['cust_name']),
+                    ("Policy Plan", c['policy_name']),
                     ("Claim Amount", format_inr(c['claim_amount'])),
                     ("Status", c['status']),
-                    ("Assigned Officer ID", c['claim_officer_id'] or "Unassigned")
+                    ("Assigned Officer", c['officer_name'] or "Unassigned")
                 ])
         elif choice == 4:
             claim_id = get_input("Enter Claim ID: ", cast_type=int)
-            claim_row = fetch_one("SELECT * FROM claims WHERE claim_id = ?", (claim_id,))
+            claim_row = fetch_one("""
+                SELECT c.*, u.full_name as cust_name, u.email as cust_email, o.full_name as officer_name, mp.policy_name
+                FROM claims c
+                JOIN users u ON c.customer_id = u.user_id
+                LEFT JOIN users o ON c.claim_officer_id = o.user_id
+                JOIN customer_policies cp ON c.customer_policy_id = cp.customer_policy_id
+                JOIN master_policies mp ON cp.policy_id = mp.policy_id
+                WHERE c.claim_id = ?
+            """, (claim_id,))
             if claim_row:
                 claim = dict(claim_row)
                 print_card(f"CLAIM DETAILS #{claim['claim_id']}", [
-                    ("Customer ID", claim['customer_id']),
-                    ("Policy ID", claim['customer_policy_id']),
+                    ("Customer Name", claim['cust_name']),
+                    ("Customer Email", claim['cust_email']),
+                    ("Policy Plan", f"{claim['policy_name']} (ID: {claim['customer_policy_id']})"),
                     ("Claim Amount", format_inr(claim['claim_amount'])),
                     ("Claim Reason", claim['claim_reason']),
                     ("Additional Details", claim.get('additional_details') or "None"),
                     ("Status", claim['status']),
-                    ("Assigned Officer ID", claim['claim_officer_id'] or "Unassigned"),
+                    ("Assigned Officer", claim['officer_name'] or "Unassigned"),
                     ("Officer Remarks", claim.get('officer_remarks') or "None"),
                     ("Filed At", claim['filed_at']),
                     ("Updated At", claim['updated_at'])

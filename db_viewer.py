@@ -62,8 +62,8 @@ def print_table_data(table_name, page=0, page_size=10):
         row_str = "|" + "|".join([f" {str(row[i]).ljust(col_widths[col])} " for i, col in enumerate(columns)]) + "|"
         print(row_str)
     
-    print(separator)
-    print(f"Showing rows {offset + 1} to min({offset + len(rows)}, {total_rows}) of {total_rows}")
+    min_val = min(offset + len(rows), total_rows)
+    print(f"Showing rows {offset + 1} to {min_val} of {total_rows}")
     return total_rows
 
 def view_table(table_name):
