@@ -1,8 +1,29 @@
 import sys
+import textwrap
 from datetime import datetime
 from database import fetch_all, fetch_one, execute_query, hash_password, get_input, print_success, print_error, print_warning, print_info, Colors
 
 current_user = None
+
+def format_inr(amount):
+    """Formats monetary amounts into Indian Rupee format (e.g. ₹5,00,000.00)."""
+    s = f"{float(amount):.2f}"
+    parts = s.split('.')
+    integer_part, decimal_part = parts[0], parts[1]
+    
+    if len(integer_part) <= 3:
+        return f"₹{integer_part}.{decimal_part}"
+    
+    last_three = integer_part[-3:]
+    other_digits = integer_part[:-3]
+    
+    res = ""
+    while len(other_digits) > 2:
+        res = "," + other_digits[-2:] + res
+        other_digits = other_digits[:-2]
+    if other_digits:
+        res = other_digits + res
+    return f"₹{res},{last_three}.{decimal_part}"
 
 def display_header(title):
     print(f"\n{Colors.CYAN}{'='*50}{Colors.RESET}")
@@ -167,9 +188,17 @@ def customer_policy_menu():
         if choice == 1:
             policies = fetch_all("SELECT * FROM master_policies WHERE is_active = 1")
             for p in policies:
-                print(f"ID: {p['policy_id']} | Name: {p['policy_name']} | Category: {p['category']}")
-                print(f"Sum Insured: {p['sum_insured']} | Premium: {p['premium_amount']}")
-                print(f"Details: {p['coverage_details']}\n")
+                wrapped_details = textwrap.wrap(p['coverage_details'], width=48)
+                print(f"{Colors.CYAN}┌────────────────────────────────────────────────────────┐{Colors.RESET}")
+                print(f"{Colors.CYAN}│{Colors.RESET} {Colors.GREEN}[ID: {p['policy_id']}]{Colors.RESET} {Colors.YELLOW}{p['policy_name']}{Colors.RESET}")
+                print(f"{Colors.CYAN}├────────────────────────────────────────────────────────┤{Colors.RESET}")
+                print(f"{Colors.CYAN}│{Colors.RESET} Category    : {p['category']}")
+                print(f"{Colors.CYAN}│{Colors.RESET} Sum Insured : {Colors.GREEN}{format_inr(p['sum_insured'])}{Colors.RESET}")
+                print(f"{Colors.CYAN}│{Colors.RESET} Premium     : {Colors.YELLOW}{format_inr(p['premium_amount'])}{Colors.RESET}")
+                print(f"{Colors.CYAN}│{Colors.RESET} Coverage Details:")
+                for line in wrapped_details:
+                    print(f"{Colors.CYAN}│{Colors.RESET}   • {line}")
+                print(f"{Colors.CYAN}└────────────────────────────────────────────────────────┘{Colors.RESET}\n")
         elif choice == 2:
             policy_id = get_input("Enter Policy ID to purchase: ", cast_type=int)
             master = fetch_one("SELECT * FROM master_policies WHERE policy_id = ? AND is_active = 1", (policy_id,))
