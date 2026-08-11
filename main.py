@@ -457,8 +457,13 @@ def agent_dashboard():
             action = get_input("Action (A=Approve, R=Reject): ").upper()
             
             if action == 'A':
-                execute_query("UPDATE customer_policies SET status = 'ACTIVE' WHERE customer_policy_id = ?", (req_id,))
-                print_success("Policy approved.")
+                start_date = datetime.now().strftime("%Y-%m-%d")
+                expiry_date = datetime.now().replace(year=datetime.now().year + 1).strftime("%Y-%m-%d")
+                execute_query(
+                    "UPDATE customer_policies SET status = 'ACTIVE', start_date = ?, expiry_date = ?, agent_remarks = 'Approved by Policy Agent' WHERE customer_policy_id = ?",
+                    (start_date, expiry_date, req_id)
+                )
+                print_success(f"Policy approved successfully! Active until {expiry_date}")
             elif action == 'R':
                 sugg_id = get_input("Suggest alternative Policy ID (optional, press enter to skip): ", allow_empty=True)
                 sugg_id = int(sugg_id) if sugg_id else None
