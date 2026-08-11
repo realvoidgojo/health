@@ -26,9 +26,29 @@ def format_inr(amount):
     return f"₹{res},{last_three}.{decimal_part}"
 
 def display_header(title):
-    print(f"\n{Colors.CYAN}{'='*50}{Colors.RESET}")
-    print(f"{Colors.CYAN}{title.center(50)}{Colors.RESET}")
-    print(f"{Colors.CYAN}{'='*50}{Colors.RESET}")
+    print(f"\n{Colors.CYAN}{'='*58}{Colors.RESET}")
+    print(f"{Colors.CYAN}{title.center(58)}{Colors.RESET}")
+    print(f"{Colors.CYAN}{'='*58}{Colors.RESET}")
+
+def print_card(title, fields, width=58):
+    """Prints a structured, beautifully formatted ASCII card for object details."""
+    print(f"\n{Colors.CYAN}┌{'─' * width}┐{Colors.RESET}")
+    title_str = f" {title}"
+    padding = width - len(title_str)
+    if padding < 0:
+        title_str = title_str[:width]
+        padding = 0
+    print(f"{Colors.CYAN}│{Colors.RESET}{Colors.YELLOW}{title_str}{' '*padding}{Colors.RESET}{Colors.CYAN}│{Colors.RESET}")
+    print(f"{Colors.CYAN}├{'─' * width}┤{Colors.RESET}")
+    for label, val in fields:
+        val_str = str(val) if val is not None else "N/A"
+        line_str = f" {label:<18}: {val_str}"
+        pad = width - len(line_str)
+        if pad < 0:
+            line_str = line_str[:width]
+            pad = 0
+        print(f"{Colors.CYAN}│{Colors.RESET}{line_str}{' '*pad}{Colors.CYAN}│{Colors.RESET}")
+    print(f"{Colors.CYAN}└{'─' * width}┘{Colors.RESET}")
 
 # ---------------------------------------------------------
 # AUTHENTICATION
@@ -129,10 +149,13 @@ def customer_profile_menu():
         choice = get_input("Select an option: ", cast_type=int)
         
         if choice == 1:
-            print(f"\nName: {current_user['full_name']}")
-            print(f"Email: {current_user['email']}")
-            print(f"Phone: {current_user['phone']}")
-            print(f"DOB: {current_user['date_of_birth']}")
+            print_card(f"PROFILE: {current_user['full_name']}", [
+                ("User ID", current_user['user_id']),
+                ("Email", current_user['email']),
+                ("Phone", current_user['phone']),
+                ("Date of Birth", current_user['date_of_birth']),
+                ("Role", current_user['role'])
+            ])
         elif choice == 2:
             print("\n1. Update Name")
             print("2. Update Phone")
@@ -234,16 +257,29 @@ def customer_policy_menu():
                 print_error(f"Failed to purchase policy: {e}")
         elif choice == 3:
             policies = fetch_all("SELECT cp.*, mp.policy_name FROM customer_policies cp JOIN master_policies mp ON cp.policy_id = mp.policy_id WHERE cp.customer_id = ?", (current_user['user_id'],))
-            for p in policies:
-                print(f"Customer Policy ID: {p['customer_policy_id']} | Policy Name: {p['policy_name']} | Status: {p['status']}")
-                print(f"Nominee: {p['nominee_name']} | Agent Remarks: {p['agent_remarks']}\n")
+            if not policies:
+                print_info("No policies found.")
+            for p_row in policies:
+                p = dict(p_row)
+                print_card(f"POLICY #{p['customer_policy_id']} - {p['policy_name']}", [
+                    ("Status", p['status']),
+                    ("Nominee Name", p['nominee_name']),
+                    ("Nominee Relation", p.get('nominee_relation', 'N/A')),
+                    ("Start Date", p.get('start_date') or 'Pending'),
+                    ("Expiry Date", p.get('expiry_date') or 'Pending'),
+                    ("Agent Remarks", p.get('agent_remarks') or 'None')
+                ])
         elif choice == 4:
             policies = fetch_all("SELECT cp.*, mp.policy_name FROM customer_policies cp JOIN master_policies mp ON cp.suggested_policy_id = mp.policy_id WHERE cp.customer_id = ? AND cp.status = 'REJECTED' AND cp.suggested_policy_id IS NOT NULL", (current_user['user_id'],))
             if not policies:
                 print_info("No suggested policies.")
-            for p in policies:
-                print(f"Original Request ID: {p['customer_policy_id']} | Suggested Policy ID: {p['suggested_policy_id']} | Suggested Policy Name: {p['policy_name']}")
-                print(f"Agent Remarks: {p['agent_remarks']}\n")
+            for p_row in policies:
+                p = dict(p_row)
+                print_card(f"SUGGESTION FOR REQUEST #{p['customer_policy_id']}", [
+                    ("Suggested Plan ID", p['suggested_policy_id']),
+                    ("Suggested Plan", p['policy_name']),
+                    ("Agent Remarks", p.get('agent_remarks') or 'None')
+                ])
         elif choice == 5:
             cp_id = get_input("Enter Customer Policy ID: ", cast_type=int)
             new_nominee = get_input("New Nominee Name: ")
@@ -320,9 +356,17 @@ def customer_claim_menu():
                 print_error(f"Failed to file claim: {e}")
         elif choice == 2:
             claims = fetch_all("SELECT * FROM claims WHERE customer_id = ?", (current_user['user_id'],))
-            for c in claims:
-                print(f"Claim ID: {c['claim_id']} | Amount: {c['claim_amount']} | Status: {c['status']}")
-                print(f"Reason: {c['claim_reason']} | Remarks: {c['officer_remarks']}\n")
+            if not claims:
+                print_info("No claims filed.")
+            for c_row in claims:
+                c = dict(c_row)
+                print_card(f"CLAIM #{c['claim_id']}", [
+                    ("Policy ID", c['customer_policy_id']),
+                    ("Claim Amount", format_inr(c['claim_amount'])),
+                    ("Status", c['status']),
+                    ("Claim Reason", c['claim_reason']),
+                    ("Officer Remarks", c.get('officer_remarks') or 'None')
+                ])
         elif choice == 3:
             claim_id = get_input("Enter Claim ID to update: ", cast_type=int)
             claim = fetch_one("SELECT status FROM claims WHERE claim_id = ? AND customer_id = ?", (claim_id, current_user['user_id']))
@@ -378,19 +422,36 @@ def agent_dashboard():
         
         if choice == 1:
             customers = fetch_all("SELECT * FROM users WHERE assigned_agent_id = ? AND is_deleted = 0", (current_user['user_id'],))
+            if not customers:
+                print_info("No assigned customers.")
             for c in customers:
-                print(f"ID: {c['user_id']} | Name: {c['full_name']} | Email: {c['email']}")
+                print_card(f"CUSTOMER #{c['user_id']} - {c['full_name']}", [
+                    ("Email", c['email']),
+                    ("Phone", c['phone']),
+                    ("Date of Birth", c['date_of_birth'])
+                ])
         elif choice == 2:
             policies = fetch_all("SELECT cp.*, u.full_name FROM customer_policies cp JOIN users u ON cp.customer_id = u.user_id WHERE cp.assigned_agent_id = ?", (current_user['user_id'],))
+            if not policies:
+                print_info("No assigned customer policies.")
             for p in policies:
-                print(f"Customer Policy ID: {p['customer_policy_id']} | Customer: {p['full_name']} | Status: {p['status']}")
+                print_card(f"CUSTOMER POLICY #{p['customer_policy_id']}", [
+                    ("Customer", p['full_name']),
+                    ("Master Policy ID", p['policy_id']),
+                    ("Status", p['status']),
+                    ("Nominee", f"{p['nominee_name']} ({p['nominee_relation']})")
+                ])
         elif choice == 3:
             requests = fetch_all("SELECT cp.*, u.full_name FROM customer_policies cp JOIN users u ON cp.customer_id = u.user_id WHERE cp.assigned_agent_id = ? AND cp.status = 'PENDING_APPROVAL'", (current_user['user_id'],))
             if not requests:
                 print_info("No pending policy requests.")
                 continue
             for r in requests:
-                print(f"Request ID: {r['customer_policy_id']} | Customer: {r['full_name']} | Policy ID: {r['policy_id']}")
+                print_card(f"PENDING APPROVAL #{r['customer_policy_id']}", [
+                    ("Customer", r['full_name']),
+                    ("Policy ID", r['policy_id']),
+                    ("Nominee", f"{r['nominee_name']} ({r['nominee_relation']})")
+                ])
                 
             req_id = get_input("Enter Request ID to process: ", cast_type=int)
             action = get_input("Action (A=Approve, R=Reject): ").upper()
@@ -428,7 +489,12 @@ def officer_dashboard():
             if not claims:
                 print_info("No claims in queue.")
             for c in claims:
-                print(f"Claim ID: {c['claim_id']} | Amount: {c['claim_amount']} | Reason: {c['claim_reason']}")
+                print_card(f"CLAIM QUEUE #{c['claim_id']}", [
+                    ("Customer ID", c['customer_id']),
+                    ("Policy ID", c['customer_policy_id']),
+                    ("Claim Amount", format_inr(c['claim_amount'])),
+                    ("Claim Reason", c['claim_reason'])
+                ])
         elif choice == 2:
             claim_id = get_input("Enter Claim ID to review: ", cast_type=int)
             claim = fetch_one("SELECT * FROM claims WHERE claim_id = ? AND claim_officer_id = ?", (claim_id, current_user['user_id']))
@@ -451,8 +517,16 @@ def officer_dashboard():
                 print_error("Invalid action.")
         elif choice == 3:
             logs = fetch_all("SELECT * FROM claim_history WHERE officer_id = ?", (current_user['user_id'],))
-            for log in logs:
-                print(f"Log ID: {log['history_id']} | Claim ID: {log['claim_id']} | Action: {log['action_taken']} | Time: {log['action_timestamp']}")
+            if not logs:
+                print_info("No history logs.")
+            for log_row in logs:
+                log = dict(log_row)
+                print_card(f"AUDIT LOG #{log['history_id']}", [
+                    ("Claim ID", log['claim_id']),
+                    ("Action Taken", log['action_taken']),
+                    ("Remarks", log.get('remarks') or 'None'),
+                    ("Timestamp", log['action_timestamp'])
+                ])
         elif choice == 0:
             current_user = None
             break
@@ -472,13 +546,30 @@ def admin_user_management():
         
         if choice == 1:
             users = fetch_all("SELECT user_id, full_name, email, role, is_active, is_deleted FROM users")
+            if not users:
+                print_info("No users found.")
             for u in users:
-                print(dict(u))
+                status_str = "Active" if u['is_active'] == 1 and u['is_deleted'] == 0 else ("Deleted" if u['is_deleted'] == 1 else "Inactive")
+                print_card(f"USER #{u['user_id']} - {u['full_name']}", [
+                    ("Email", u['email']),
+                    ("Role", u['role']),
+                    ("Status", status_str)
+                ])
         elif choice == 2:
             email = get_input("Enter Email: ")
             user = fetch_one("SELECT * FROM users WHERE email = ?", (email,))
             if user:
-                print(dict(user))
+                status_str = "Active" if user['is_active'] == 1 and user['is_deleted'] == 0 else ("Deleted" if user['is_deleted'] == 1 else "Inactive")
+                print_card(f"USER DETAILS #{user['user_id']}", [
+                    ("Full Name", user['full_name']),
+                    ("Email", user['email']),
+                    ("Phone", user['phone']),
+                    ("Date of Birth", user['date_of_birth']),
+                    ("Role", user['role']),
+                    ("Assigned Agent ID", user['assigned_agent_id'] or "None"),
+                    ("Account Status", status_str),
+                    ("Created At", user['created_at'])
+                ])
             else:
                 print_error("User not found.")
         elif choice == 3:
@@ -487,7 +578,12 @@ def admin_user_management():
                 print_info("No pending requests.")
                 continue
             for r in requests:
-                print(f"Request ID: {r['request_id']} | User: {r['email']} | Date: {r['request_date']}")
+                print_card(f"REACTIVATION REQUEST #{r['request_id']}", [
+                    ("User Email", r['email']),
+                    ("User ID", r['user_id']),
+                    ("Status", r['status']),
+                    ("Request Date", r['request_date'])
+                ])
             req_id = get_input("Enter Request ID to process (0 to cancel): ", cast_type=int)
             if req_id != 0:
                 req = fetch_one("SELECT * FROM reactivation_requests WHERE request_id = ?", (req_id,))
@@ -557,8 +653,15 @@ def admin_agent_management():
                 print_error(f"Failed to add agent: {e}")
         elif choice == 2:
             agents = fetch_all("SELECT user_id, full_name, email, role, is_active FROM users WHERE role IN ('POLICY_AGENT', 'CLAIM_OFFICER')")
+            if not agents:
+                print_info("No staff members found.")
             for a in agents:
-                print(dict(a))
+                status_str = "Active" if a['is_active'] == 1 else "Inactive"
+                print_card(f"STAFF #{a['user_id']} - {a['full_name']}", [
+                    ("Email", a['email']),
+                    ("Role", a['role']),
+                    ("Status", status_str)
+                ])
         elif choice == 3:
             u_id = get_input("Enter Agent/Officer User ID: ", cast_type=int)
             agent = fetch_one("SELECT * FROM users WHERE user_id = ? AND role IN ('POLICY_AGENT', 'CLAIM_OFFICER')", (u_id,))
@@ -597,8 +700,16 @@ def admin_claim_management():
         
         if choice == 1:
             claims = fetch_all("SELECT * FROM claims WHERE status = 'PENDING_ASSIGNMENT'")
+            if not claims:
+                print_info("No unassigned claims in pool.")
             for c in claims:
-                print(dict(c))
+                print_card(f"UNASSIGNED CLAIM #{c['claim_id']}", [
+                    ("Customer ID", c['customer_id']),
+                    ("Policy ID", c['customer_policy_id']),
+                    ("Claim Amount", format_inr(c['claim_amount'])),
+                    ("Claim Reason", c['claim_reason']),
+                    ("Filed At", c['filed_at'])
+                ])
         elif choice == 2:
             claim_id = get_input("Enter Claim ID: ", cast_type=int)
             officer_id = get_input("Enter Claim Officer ID: ", cast_type=int)
@@ -610,13 +721,32 @@ def admin_claim_management():
                 print_error(f"Failed to assign claim: {e}")
         elif choice == 3:
             claims = fetch_all("SELECT * FROM claims")
+            if not claims:
+                print_info("No claims found.")
             for c in claims:
-                print(f"Claim ID: {c['claim_id']} | Status: {c['status']} | Officer ID: {c['claim_officer_id']}")
+                print_card(f"CLAIM #{c['claim_id']}", [
+                    ("Customer ID", c['customer_id']),
+                    ("Claim Amount", format_inr(c['claim_amount'])),
+                    ("Status", c['status']),
+                    ("Assigned Officer ID", c['claim_officer_id'] or "Unassigned")
+                ])
         elif choice == 4:
             claim_id = get_input("Enter Claim ID: ", cast_type=int)
-            claim = fetch_one("SELECT * FROM claims WHERE claim_id = ?", (claim_id,))
-            if claim:
-                print(dict(claim))
+            claim_row = fetch_one("SELECT * FROM claims WHERE claim_id = ?", (claim_id,))
+            if claim_row:
+                claim = dict(claim_row)
+                print_card(f"CLAIM DETAILS #{claim['claim_id']}", [
+                    ("Customer ID", claim['customer_id']),
+                    ("Policy ID", claim['customer_policy_id']),
+                    ("Claim Amount", format_inr(claim['claim_amount'])),
+                    ("Claim Reason", claim['claim_reason']),
+                    ("Additional Details", claim.get('additional_details') or "None"),
+                    ("Status", claim['status']),
+                    ("Assigned Officer ID", claim['claim_officer_id'] or "Unassigned"),
+                    ("Officer Remarks", claim.get('officer_remarks') or "None"),
+                    ("Filed At", claim['filed_at']),
+                    ("Updated At", claim['updated_at'])
+                ])
             else:
                 print_error("Claim not found.")
         elif choice == 0:
@@ -634,13 +764,33 @@ def admin_policy_management():
             policies = fetch_all("SELECT cp.*, mp.policy_name, u.email FROM customer_policies cp JOIN master_policies mp ON cp.policy_id = mp.policy_id JOIN users u ON cp.customer_id = u.user_id")
             if not policies:
                 print_info("No policies found.")
-            for p in policies:
-                print(f"CP ID: {p['customer_policy_id']} | Customer: {p['email']} | Policy: {p['policy_name']} | Status: {p['status']}")
+            for p_row in policies:
+                p = dict(p_row)
+                print_card(f"CUSTOMER POLICY #{p['customer_policy_id']}", [
+                    ("Customer Email", p['email']),
+                    ("Policy Plan", p['policy_name']),
+                    ("Status", p['status']),
+                    ("Start Date", p.get('start_date') or "Pending"),
+                    ("Expiry Date", p.get('expiry_date') or "Pending")
+                ])
         elif choice == 2:
             cp_id = get_input("Enter Customer Policy ID: ", cast_type=int)
-            policy = fetch_one("SELECT cp.*, mp.policy_name, u.email FROM customer_policies cp JOIN master_policies mp ON cp.policy_id = mp.policy_id JOIN users u ON cp.customer_id = u.user_id WHERE cp.customer_policy_id = ?", (cp_id,))
-            if policy:
-                print(dict(policy))
+            policy_row = fetch_one("SELECT cp.*, mp.policy_name, u.email FROM customer_policies cp JOIN master_policies mp ON cp.policy_id = mp.policy_id JOIN users u ON cp.customer_id = u.user_id WHERE cp.customer_policy_id = ?", (cp_id,))
+            if policy_row:
+                policy = dict(policy_row)
+                print_card(f"POLICY DETAILS #{policy['customer_policy_id']}", [
+                    ("Customer Email", policy['email']),
+                    ("Master Policy ID", policy['policy_id']),
+                    ("Policy Name", policy['policy_name']),
+                    ("Nominee Name", policy['nominee_name']),
+                    ("Nominee Relation", policy['nominee_relation']),
+                    ("Status", policy['status']),
+                    ("Assigned Agent ID", policy['assigned_agent_id'] or "None"),
+                    ("Agent Remarks", policy.get('agent_remarks') or "None"),
+                    ("Start Date", policy.get('start_date') or "Pending"),
+                    ("Expiry Date", policy.get('expiry_date') or "Pending"),
+                    ("Created At", policy['created_at'])
+                ])
             else:
                 print_error("Policy not found.")
         elif choice == 0:
@@ -658,32 +808,131 @@ def admin_reports():
         choice = get_input("Select an option: ", cast_type=int)
         
         if choice == 1:
-            count = fetch_one("SELECT COUNT(*) as c FROM customer_policies WHERE status = 'ACTIVE'")['c']
-            print_info(f"Total Active Policies: {count}")
+            display_header("REPORT: ACTIVE POLICIES")
+            policies = fetch_all("""
+                SELECT cp.*, mp.policy_name, mp.premium_amount, mp.sum_insured, u.full_name as cust_name, u.email as cust_email, a.full_name as agent_name
+                FROM customer_policies cp
+                JOIN master_policies mp ON cp.policy_id = mp.policy_id
+                JOIN users u ON cp.customer_id = u.user_id
+                LEFT JOIN users a ON cp.assigned_agent_id = a.user_id
+                WHERE cp.status = 'ACTIVE'
+            """)
+            print_info(f"Total Active Policies: {len(policies)}")
+            for p_row in policies:
+                p = dict(p_row)
+                print_card(f"ACTIVE POLICY #{p['customer_policy_id']}", [
+                    ("Customer Name", p['cust_name']),
+                    ("Customer Email", p['cust_email']),
+                    ("Plan Name", p['policy_name']),
+                    ("Sum Insured", format_inr(p['sum_insured'])),
+                    ("Annual Premium", format_inr(p['premium_amount'])),
+                    ("Start Date", p.get('start_date') or "N/A"),
+                    ("Expiry Date", p.get('expiry_date') or "N/A"),
+                    ("Assigned Agent", p['agent_name'] or "Unassigned")
+                ])
         elif choice == 2:
-            count = fetch_one("SELECT COUNT(*) as c FROM claims WHERE status = 'APPROVED'")['c']
-            print_info(f"Total Approved Claims: {count}")
+            display_header("REPORT: APPROVED CLAIMS")
+            claims = fetch_all("""
+                SELECT c.*, cp.customer_policy_id, mp.policy_name, u.full_name as cust_name, u.email as cust_email, o.full_name as officer_name
+                FROM claims c
+                JOIN customer_policies cp ON c.customer_policy_id = cp.customer_policy_id
+                JOIN master_policies mp ON cp.policy_id = mp.policy_id
+                JOIN users u ON c.customer_id = u.user_id
+                LEFT JOIN users o ON c.claim_officer_id = o.user_id
+                WHERE c.status = 'APPROVED'
+            """)
+            total_amt = sum(c['claim_amount'] for c in claims)
+            print_info(f"Total Approved Claims: {len(claims)} | Total Disbursed: {format_inr(total_amt)}")
+            for c_row in claims:
+                c = dict(c_row)
+                print_card(f"APPROVED CLAIM #{c['claim_id']}", [
+                    ("Customer Name", c['cust_name']),
+                    ("Customer Email", c['cust_email']),
+                    ("Policy Plan", c['policy_name']),
+                    ("Approved Amount", format_inr(c['claim_amount'])),
+                    ("Claim Reason", c['claim_reason']),
+                    ("Claim Officer", c['officer_name'] or "System Admin"),
+                    ("Officer Remarks", c.get('officer_remarks') or "Approved"),
+                    ("Filed At", c['filed_at'])
+                ])
         elif choice == 3:
-            count = fetch_one("SELECT COUNT(*) as c FROM customer_policies WHERE status = 'EXPIRED'")['c']
-            print_info(f"Total Expired Policies: {count}")
+            display_header("REPORT: EXPIRED POLICIES")
+            policies = fetch_all("""
+                SELECT cp.*, mp.policy_name, mp.premium_amount, u.full_name as cust_name, u.email as cust_email
+                FROM customer_policies cp
+                JOIN master_policies mp ON cp.policy_id = mp.policy_id
+                JOIN users u ON cp.customer_id = u.user_id
+                WHERE cp.status = 'EXPIRED'
+            """)
+            print_info(f"Total Expired Policies: {len(policies)}")
+            for p_row in policies:
+                p = dict(p_row)
+                print_card(f"EXPIRED POLICY #{p['customer_policy_id']}", [
+                    ("Customer Name", p['cust_name']),
+                    ("Customer Email", p['cust_email']),
+                    ("Plan Name", p['policy_name']),
+                    ("Annual Premium", format_inr(p['premium_amount'])),
+                    ("Start Date", p.get('start_date') or "N/A"),
+                    ("Expiry Date", p.get('expiry_date') or "N/A")
+                ])
         elif choice == 4:
-            count = fetch_one("SELECT COUNT(*) as c FROM claims WHERE status = 'REJECTED'")['c']
-            print_info(f"Total Rejected Claims: {count}")
+            display_header("REPORT: REJECTED CLAIMS")
+            claims = fetch_all("""
+                SELECT c.*, mp.policy_name, u.full_name as cust_name, u.email as cust_email, o.full_name as officer_name
+                FROM claims c
+                JOIN customer_policies cp ON c.customer_policy_id = cp.customer_policy_id
+                JOIN master_policies mp ON cp.policy_id = mp.policy_id
+                JOIN users u ON c.customer_id = u.user_id
+                LEFT JOIN users o ON c.claim_officer_id = o.user_id
+                WHERE c.status = 'REJECTED'
+            """)
+            total_amt = sum(c['claim_amount'] for c in claims)
+            print_info(f"Total Rejected Claims: {len(claims)} | Total Rejected Amount: {format_inr(total_amt)}")
+            if not claims:
+                print_info("No rejected claims recorded.")
+            for c_row in claims:
+                c = dict(c_row)
+                print_card(f"REJECTED CLAIM #{c['claim_id']}", [
+                    ("Customer Name", c['cust_name']),
+                    ("Customer Email", c['cust_email']),
+                    ("Policy Plan", c['policy_name']),
+                    ("Claimed Amount", format_inr(c['claim_amount'])),
+                    ("Claim Reason", c['claim_reason']),
+                    ("Reviewing Officer", c['officer_name'] or "System Admin"),
+                    ("Rejection Reason", c.get('officer_remarks') or "None"),
+                    ("Filed At", c['filed_at'])
+                ])
         elif choice == 5:
+            display_header("REPORT: AGENT & OFFICER PERFORMANCE")
             agents = fetch_all("""
-                SELECT u.user_id, u.full_name, u.role,
+                SELECT u.user_id, u.full_name, u.email, u.role,
                 (SELECT COUNT(*) FROM customer_policies cp WHERE cp.assigned_agent_id = u.user_id AND cp.status = 'ACTIVE') as policies_approved,
                 (SELECT COUNT(*) FROM customer_policies cp WHERE cp.assigned_agent_id = u.user_id AND cp.status = 'REJECTED') as policies_rejected,
                 (SELECT COUNT(*) FROM claims c WHERE c.claim_officer_id = u.user_id AND c.status = 'APPROVED') as claims_approved,
                 (SELECT COUNT(*) FROM claims c WHERE c.claim_officer_id = u.user_id AND c.status = 'REJECTED') as claims_rejected
                 FROM users u WHERE u.role IN ('POLICY_AGENT', 'CLAIM_OFFICER')
             """)
+            print_info(f"Total Staff Active: {len(agents)}")
             for a in agents:
-                print(f"Agent/Officer: {a['full_name']} ({a['role']})")
                 if a['role'] == 'POLICY_AGENT':
-                    print(f"  Policies Approved: {a['policies_approved']} | Rejected: {a['policies_rejected']}")
+                    total_req = a['policies_approved'] + a['policies_rejected']
+                    metrics = [
+                        ("Staff Email", a['email']),
+                        ("Role", "POLICY AGENT"),
+                        ("Total Handled", total_req),
+                        ("Policies Approved", a['policies_approved']),
+                        ("Policies Rejected", a['policies_rejected'])
+                    ]
                 else:
-                    print(f"  Claims Approved: {a['claims_approved']} | Rejected: {a['claims_rejected']}")
+                    total_claims = a['claims_approved'] + a['claims_rejected']
+                    metrics = [
+                        ("Staff Email", a['email']),
+                        ("Role", "CLAIM OFFICER"),
+                        ("Total Processed", total_claims),
+                        ("Claims Approved", a['claims_approved']),
+                        ("Claims Rejected", a['claims_rejected'])
+                    ]
+                print_card(f"STAFF #{a['user_id']} - {a['full_name']}", metrics)
         elif choice == 0:
             break
 

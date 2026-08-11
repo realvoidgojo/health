@@ -199,5 +199,74 @@ class TestHIMSApp(unittest.TestCase):
         self.assertEqual(user['is_deleted'], 0)
         self.assertEqual(user['is_active'], 1)
 
+    def test_admin_system_reports_all_options(self):
+        # Insert sample active policy, approved claim, expired policy, rejected claim
+        cust_id = database.execute_query("INSERT INTO users (full_name, email, password, phone, date_of_birth, role) VALUES ('Report Cust', 'rep@c.com', 'pw', '123', '1990', 'CUSTOMER')")
+        officer_id = database.execute_query("INSERT INTO users (full_name, email, password, phone, date_of_birth, role) VALUES ('Report Officer', 'off@c.com', 'pw', '123', '1990', 'CLAIM_OFFICER')")
+        agent_id = database.execute_query("INSERT INTO users (full_name, email, password, phone, date_of_birth, role) VALUES ('Report Agent', 'ag@c.com', 'pw', '123', '1990', 'POLICY_AGENT')")
+
+        cp_active = database.execute_query("INSERT INTO customer_policies (customer_id, policy_id, nominee_name, nominee_relation, status, assigned_agent_id) VALUES (?, 1, 'Nom', 'Sis', 'ACTIVE', ?)", (cust_id, agent_id))
+        cp_expired = database.execute_query("INSERT INTO customer_policies (customer_id, policy_id, nominee_name, nominee_relation, status) VALUES (?, 1, 'Nom', 'Sis', 'EXPIRED')", (cust_id,))
+
+        database.execute_query("INSERT INTO claims (customer_policy_id, customer_id, claim_amount, claim_reason, status, claim_officer_id, officer_remarks) VALUES (?, ?, 5000, 'Fever', 'APPROVED', ?, 'Approved ok')", (cp_active, cust_id, officer_id))
+        database.execute_query("INSERT INTO claims (customer_policy_id, customer_id, claim_amount, claim_reason, status, claim_officer_id, officer_remarks) VALUES (?, ?, 10000, 'Accident', 'REJECTED', ?, 'Not covered')", (cp_active, cust_id, officer_id))
+
+        # Test options 1, 2, 3, 4, 5, 0 sequentially in admin_reports()
+        with patch('builtins.input', side_effect=['1', '2', '3', '4', '5', '0']):
+            main.admin_reports()
+
+    def test_admin_policy_management(self):
+        cust_id = database.execute_query("INSERT INTO users (full_name, email, password, phone, date_of_birth, role) VALUES ('Pol Cust', 'pol@c.com', 'pw', '123', '1990', 'CUSTOMER')")
+        cp_id = database.execute_query("INSERT INTO customer_policies (customer_id, policy_id, nominee_name, nominee_relation, status) VALUES (?, 1, 'Nom', 'Sis', 'ACTIVE')", (cust_id,))
+
+        # Test choice 1 (View All), choice 2 (Search by ID), choice 0 (Back)
+        with patch('builtins.input', side_effect=['1', '2', str(cp_id), '0']):
+            main.admin_policy_management()
+
+    def test_admin_claim_management_extended(self):
+        cust_id = database.execute_query("INSERT INTO users (full_name, email, password, phone, date_of_birth, role) VALUES ('Claim Cust', 'cl@c.com', 'pw', '123', '1990', 'CUSTOMER')")
+        cp_id = database.execute_query("INSERT INTO customer_policies (customer_id, policy_id, nominee_name, nominee_relation, status) VALUES (?, 1, 'Nom', 'Sis', 'ACTIVE')", (cust_id,))
+        claim_id = database.execute_query("INSERT INTO claims (customer_policy_id, customer_id, claim_amount, claim_reason, status) VALUES (?, ?, 2000, 'Checkup', 'PENDING_ASSIGNMENT')", (cp_id, cust_id))
+
+        # Test choice 1 (Unassigned Pool), choice 3 (View All Claims), choice 4 (Search Claim by ID), choice 0 (Back)
+        with patch('builtins.input', side_effect=['1', '3', '4', str(claim_id), '0']):
+            main.admin_claim_management()
+
+    def test_admin_agent_management_extended(self):
+        # 1. Add Agent (choice 1)
+        with patch('builtins.input', side_effect=['1', 'New Staff', 'staff@hims.com', 'pass123', '999', '1990-01-01', 'POLICY_AGENT', '0']):
+            main.admin_agent_management()
+
+        staff = database.fetch_one("SELECT * FROM users WHERE email = 'staff@hims.com'")
+        self.assertIsNotNone(staff)
+        staff_id = staff['user_id']
+
+        # 2. View All Staff (choice 2) & Edit Staff Phone/Status (choice 3)
+        with patch('builtins.input', side_effect=['2', '3', str(staff_id), '1', '888888', '3', str(staff_id), '2', '0']):
+            main.admin_agent_management()
+
+        updated_staff = database.fetch_one("SELECT * FROM users WHERE user_id = ?", (staff_id,))
+        self.assertEqual(updated_staff['phone'], '888888')
+        self.assertEqual(updated_staff['is_active'], 0)
+
+    def test_customer_extended_flows(self):
+        cust_id = database.execute_query("INSERT INTO users (full_name, email, password, phone, date_of_birth, role) VALUES ('Flow Cust', 'flow@c.com', 'pw', '123', '1990-01-01', 'CUSTOMER')")
+        main.current_user = dict(database.fetch_one("SELECT * FROM users WHERE user_id = ?", (cust_id,)))
+
+        # 1. Profile View (1) and Profile Edit (2 -> update phone)
+        with patch('builtins.input', side_effect=['1', '2', '2', '777777', '0']):
+            main.customer_profile_menu()
+
+        self.assertEqual(main.current_user['phone'], '777777')
+
+        # 2. Policy Menu: View Available (1), View My (3), View Suggested (4), Update Nominee (5)
+        cp_id = database.execute_query("INSERT INTO customer_policies (customer_id, policy_id, nominee_name, nominee_relation, status) VALUES (?, 1, 'OldNom', 'Bro', 'ACTIVE')", (cust_id,))
+        with patch('builtins.input', side_effect=['1', '3', '4', '5', str(cp_id), 'NewNom', 'Sister', '0']):
+            main.customer_policy_menu()
+
+        cp = database.fetch_one("SELECT * FROM customer_policies WHERE customer_policy_id = ?", (cp_id,))
+        self.assertEqual(cp['nominee_name'], 'NewNom')
+        self.assertEqual(cp['nominee_relation'], 'Sister')
+
 if __name__ == '__main__':
     unittest.main()
