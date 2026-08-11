@@ -143,24 +143,25 @@ class TestHIMSApp(unittest.TestCase):
         self.assertEqual(claim['status'], 'PENDING_ASSIGNMENT')
         claim_id = claim['claim_id']
         
-        # 2. Admin assigns claim
+        # 2. Admin assigns claim to a valid Claim Officer
+        database.execute_query("INSERT INTO users (user_id, full_name, email, password, phone, date_of_birth, role, is_active, is_deleted) VALUES (99, 'Officer', 'off@test.com', 'pw', '12', '1990', 'CLAIM_OFFICER', 1, 0)")
         main.current_user = {'user_id': 1} # Admin
-        with patch('builtins.input', side_effect=['2', str(claim_id), '1', '0']): # Assign to officer 1
+        with patch('builtins.input', side_effect=['2', str(claim_id), '99', '0']): # Assign to officer 99
             main.admin_claim_management()
             
         claim = database.fetch_one("SELECT * FROM claims WHERE claim_id = ?", (claim_id,))
         self.assertEqual(claim['status'], 'UNDER_REVIEW')
         
         # 3. Officer reviews claim (needs update)
-        main.current_user = {'user_id': 1, 'role': 'CLAIM_OFFICER'} # We assigned to ID 1
+        main.current_user = {'user_id': 99, 'role': 'CLAIM_OFFICER'}
         with patch('builtins.input', side_effect=['2', str(claim_id), 'U', 'Need bills', '0']):
             main.officer_dashboard()
             
         claim = database.fetch_one("SELECT * FROM claims WHERE claim_id = ?", (claim_id,))
         self.assertEqual(claim['status'], 'NEEDS_UPDATE')
         
-        # 4. Officer approves claim (assuming customer updated it, but let's test straight approve)
-        main.current_user = {'user_id': 1, 'role': 'CLAIM_OFFICER'}
+        # 4. Officer approves claim
+        main.current_user = {'user_id': 99, 'role': 'CLAIM_OFFICER'}
         with patch('builtins.input', side_effect=['2', str(claim_id), 'A', 'Looks good', '0']):
             main.officer_dashboard()
             

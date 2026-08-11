@@ -33,6 +33,20 @@ def hash_password(password: str) -> str:
     """Hashes a password using SHA-256."""
     return hashlib.sha256(password.encode()).hexdigest()
 
+def validate_email(email: str) -> bool:
+    """Validates email format."""
+    pattern = r"^[\w\.-]+@[\w\.-]+\.\w+$"
+    return bool(re.match(pattern, email))
+
+def validate_date(date_str: str) -> bool:
+    """Validates date string format YYYY-MM-DD."""
+    try:
+        from datetime import datetime
+        datetime.strptime(date_str, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
+
 def sanitize_input(value, cast_type=str, allow_empty=False):
     """Sanitizes input by stripping whitespaces and control characters, and casting to type."""
     if value is None:

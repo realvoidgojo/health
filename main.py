@@ -1,7 +1,7 @@
 import sys
 import textwrap
 from datetime import datetime
-from database import fetch_all, fetch_one, execute_query, hash_password, get_input, print_success, print_error, print_warning, print_info, Colors
+from database import fetch_all, fetch_one, execute_query, hash_password, get_input, print_success, print_error, print_warning, print_info, Colors, validate_email, validate_date
 
 current_user = None
 
@@ -57,9 +57,15 @@ def register_user():
     display_header("REGISTER NEW ACCOUNT")
     name = get_input("Full Name: ")
     email = get_input("Email Address: ")
+    if not validate_email(email):
+        print_error("Invalid email address format (e.g. user@example.com).")
+        return
     password = get_input("Password: ", is_password=True)
     phone = get_input("Phone Number: ")
     dob = get_input("Date of Birth (YYYY-MM-DD): ")
+    if not validate_date(dob):
+        print_error("Invalid Date of Birth format. Please use YYYY-MM-DD.")
+        return
     
     # Check if email exists
     existing = fetch_one("SELECT * FROM users WHERE email = ?", (email,))
@@ -245,6 +251,11 @@ def customer_policy_menu():
                 print_error("Invalid or inactive Policy ID.")
                 continue
                 
+            existing_pol = fetch_one("SELECT * FROM customer_policies WHERE customer_id = ? AND policy_id = ? AND status IN ('PENDING_APPROVAL', 'ACTIVE')", (current_user['user_id'], policy_id))
+            if existing_pol:
+                print_error("You already have an ACTIVE or PENDING policy request for this plan.")
+                continue
+                
             nominee = get_input("Nominee Name: ")
             relation = get_input("Nominee Relation: ")
             try:
@@ -338,13 +349,20 @@ def customer_claim_menu():
         
         if choice == 1:
             cp_id = get_input("Enter Customer Policy ID against which to claim: ", cast_type=int)
-            # Check if policy is active
-            pol = fetch_one("SELECT status FROM customer_policies WHERE customer_policy_id = ? AND customer_id = ?", (cp_id, current_user['user_id']))
+            # Check if policy is active and fetch sum_insured
+            pol = fetch_one("SELECT cp.status, mp.sum_insured FROM customer_policies cp JOIN master_policies mp ON cp.policy_id = mp.policy_id WHERE cp.customer_policy_id = ? AND cp.customer_id = ?", (cp_id, current_user['user_id']))
             if not pol or pol['status'] != 'ACTIVE':
                 print_error("You can only file claims against ACTIVE policies.")
                 continue
                 
             amount = get_input("Claim Amount: ", cast_type=float)
+            if amount <= 0:
+                print_error("Claim amount must be greater than zero.")
+                continue
+            if amount > pol['sum_insured']:
+                print_error(f"Claim amount ({format_inr(amount)}) exceeds policy Sum Insured limit ({format_inr(pol['sum_insured'])}).")
+                continue
+                
             reason = get_input("Claim Reason: ")
             try:
                 execute_query(
@@ -466,7 +484,14 @@ def agent_dashboard():
                 print_success(f"Policy approved successfully! Active until {expiry_date}")
             elif action == 'R':
                 sugg_id = get_input("Suggest alternative Policy ID (optional, press enter to skip): ", allow_empty=True)
-                sugg_id = int(sugg_id) if sugg_id else None
+                if sugg_id:
+                    sugg_id = int(sugg_id)
+                    s_check = fetch_one("SELECT * FROM master_policies WHERE policy_id = ? AND is_active = 1", (sugg_id,))
+                    if not s_check:
+                        print_error("Invalid or inactive suggested Policy ID.")
+                        continue
+                else:
+                    sugg_id = None
                 reason = get_input("Rejection Remarks: ")
                 execute_query("UPDATE customer_policies SET status = 'REJECTED', suggested_policy_id = ?, agent_remarks = ? WHERE customer_policy_id = ?", (sugg_id, reason, req_id))
                 print_success("Policy rejected.")
@@ -617,6 +642,10 @@ def admin_user_management():
                 print(f"Agent ID: {a['user_id']} | Name: {a['full_name']}")
                 
             a_id = get_input("Enter Policy Agent ID to assign: ", cast_type=int)
+            agent_check = fetch_one("SELECT * FROM users WHERE user_id = ? AND role = 'POLICY_AGENT' AND is_active = 1 AND is_deleted = 0", (a_id,))
+            if not agent_check:
+                print_error("Invalid or inactive Policy Agent ID.")
+                continue
             try:
                 execute_query("UPDATE users SET assigned_agent_id = ? WHERE user_id = ?", (a_id, c_id))
                 execute_query("UPDATE customer_policies SET assigned_agent_id = ? WHERE customer_id = ? AND status = 'PENDING_APPROVAL'", (a_id, c_id))
@@ -718,6 +747,10 @@ def admin_claim_management():
         elif choice == 2:
             claim_id = get_input("Enter Claim ID: ", cast_type=int)
             officer_id = get_input("Enter Claim Officer ID: ", cast_type=int)
+            officer_check = fetch_one("SELECT * FROM users WHERE user_id = ? AND role = 'CLAIM_OFFICER' AND is_active = 1 AND is_deleted = 0", (officer_id,))
+            if not officer_check:
+                print_error("Invalid or inactive Claim Officer ID.")
+                continue
             try:
                 execute_query("UPDATE claims SET claim_officer_id = ?, status = 'UNDER_REVIEW' WHERE claim_id = ?", (officer_id, claim_id))
                 execute_query("INSERT INTO claim_history (claim_id, officer_id, action_taken, remarks) VALUES (?, ?, ?, ?)", (claim_id, current_user['user_id'], 'ASSIGNED', 'Assigned by Admin'))
