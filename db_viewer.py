@@ -96,6 +96,13 @@ def view_table(table_name):
         else:
             print_error("Invalid option. Please choose N, P, or B.")
 
+def view_all_tables(tables):
+    """View all tables sequentially with neat printing."""
+    for table in tables:
+        print_table_data(table, page=0, page_size=99999)
+    print("\n" + Colors.GREEN + "=== End of all tables ===" + Colors.RESET)
+    get_input("Press Enter to return to menu...", allow_empty=True)
+
 def main_menu():
     while True:
         print(f"\n{Colors.GREEN}=== DB Viewer Menu ==={Colors.RESET}")
@@ -108,6 +115,7 @@ def main_menu():
         for i, table in enumerate(tables, 1):
             print(f"{i}. {table}")
             
+        print(f"{len(tables) + 1}. View All Tables")
         print("0. Exit")
         
         choice = get_input("\nSelect a table number to view: ", cast_type=int)
@@ -117,6 +125,8 @@ def main_menu():
             break
         elif 1 <= choice <= len(tables):
             view_table(tables[choice - 1])
+        elif choice == len(tables) + 1:
+            view_all_tables(tables)
         else:
             print_error("Invalid selection.")
 

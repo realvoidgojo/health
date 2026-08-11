@@ -157,9 +157,10 @@ def customer_policy_menu():
         print("1. View Available Policies")
         print("2. Purchase Policy")
         print("3. View My Policies")
-        print("4. Update Nominee")
-        print("5. Renew Policy")
-        print("6. Cancel Policy")
+        print("4. View Suggested Policies")
+        print("5. Update Nominee")
+        print("6. Renew Policy")
+        print("7. Cancel Policy")
         print("0. Back")
         choice = get_input("Select an option: ", cast_type=int)
         
@@ -191,9 +192,14 @@ def customer_policy_menu():
             for p in policies:
                 print(f"Customer Policy ID: {p['customer_policy_id']} | Policy Name: {p['policy_name']} | Status: {p['status']}")
                 print(f"Nominee: {p['nominee_name']} | Agent Remarks: {p['agent_remarks']}\n")
-                if p['suggested_policy_id']:
-                    print_info(f"Agent suggested alternative Policy ID: {p['suggested_policy_id']}")
         elif choice == 4:
+            policies = fetch_all("SELECT cp.*, mp.policy_name FROM customer_policies cp JOIN master_policies mp ON cp.suggested_policy_id = mp.policy_id WHERE cp.customer_id = ? AND cp.status = 'REJECTED' AND cp.suggested_policy_id IS NOT NULL", (current_user['user_id'],))
+            if not policies:
+                print_info("No suggested policies.")
+            for p in policies:
+                print(f"Original Request ID: {p['customer_policy_id']} | Suggested Policy ID: {p['suggested_policy_id']} | Suggested Policy Name: {p['policy_name']}")
+                print(f"Agent Remarks: {p['agent_remarks']}\n")
+        elif choice == 5:
             cp_id = get_input("Enter Customer Policy ID: ", cast_type=int)
             new_nominee = get_input("New Nominee Name: ")
             new_relation = get_input("New Nominee Relation: ")
@@ -205,7 +211,7 @@ def customer_policy_menu():
                     print_error("Policy not found or not ACTIVE.")
             except Exception as e:
                 print_error(f"Failed to update nominee: {e}")
-        elif choice == 5:
+        elif choice == 6:
             cp_id = get_input("Enter Customer Policy ID to renew: ", cast_type=int)
             policy = fetch_one("SELECT * FROM customer_policies WHERE customer_policy_id = ? AND customer_id = ?", (cp_id, current_user['user_id']))
             if not policy:
@@ -227,7 +233,7 @@ def customer_policy_menu():
                 print_success(f"Policy renewed. New expiry date: {new_expiry}")
             except Exception as e:
                 print_error(f"Failed to renew policy: {e}")
-        elif choice == 6:
+        elif choice == 7:
             cp_id = get_input("Enter Customer Policy ID to cancel: ", cast_type=int)
             try:
                 rows = execute_query("UPDATE customer_policies SET status = 'CANCELLED' WHERE customer_policy_id = ? AND customer_id = ? AND status = 'ACTIVE'", (cp_id, current_user['user_id']))
@@ -479,6 +485,7 @@ def admin_agent_management():
         display_header("AGENT MANAGEMENT")
         print("1. Add Policy Agent / Claim Officer")
         print("2. View All Agents/Officers")
+        print("3. Edit Policy Agent / Claim Officer")
         print("0. Back")
         choice = get_input("Select an option: ", cast_type=int)
         
@@ -504,9 +511,32 @@ def admin_agent_management():
             except Exception as e:
                 print_error(f"Failed to add agent: {e}")
         elif choice == 2:
-            agents = fetch_all("SELECT user_id, full_name, email, role FROM users WHERE role IN ('POLICY_AGENT', 'CLAIM_OFFICER')")
+            agents = fetch_all("SELECT user_id, full_name, email, role, is_active FROM users WHERE role IN ('POLICY_AGENT', 'CLAIM_OFFICER')")
             for a in agents:
                 print(dict(a))
+        elif choice == 3:
+            u_id = get_input("Enter Agent/Officer User ID: ", cast_type=int)
+            agent = fetch_one("SELECT * FROM users WHERE user_id = ? AND role IN ('POLICY_AGENT', 'CLAIM_OFFICER')", (u_id,))
+            if not agent:
+                print_error("Agent/Officer not found.")
+                continue
+                
+            print("\n1. Update Phone Number")
+            print("2. Toggle Active Status")
+            print("0. Cancel")
+            sub = get_input("Select option: ", cast_type=int)
+            
+            try:
+                if sub == 1:
+                    phone = get_input("New Phone: ")
+                    execute_query("UPDATE users SET phone = ? WHERE user_id = ?", (phone, u_id))
+                    print_success("Phone updated.")
+                elif sub == 2:
+                    new_status = 0 if agent['is_active'] == 1 else 1
+                    execute_query("UPDATE users SET is_active = ? WHERE user_id = ?", (new_status, u_id))
+                    print_success(f"Status toggled to {'Active' if new_status == 1 else 'Inactive'}.")
+            except Exception as e:
+                print_error(f"Failed to update agent: {e}")
         elif choice == 0:
             break
 
@@ -516,6 +546,7 @@ def admin_claim_management():
         print("1. View Unassigned Claim Pool")
         print("2. Assign Claim to Officer")
         print("3. View All Claims")
+        print("4. Search Claim by ID")
         print("0. Back")
         choice = get_input("Select an option: ", cast_type=int)
         
@@ -536,6 +567,37 @@ def admin_claim_management():
             claims = fetch_all("SELECT * FROM claims")
             for c in claims:
                 print(f"Claim ID: {c['claim_id']} | Status: {c['status']} | Officer ID: {c['claim_officer_id']}")
+        elif choice == 4:
+            claim_id = get_input("Enter Claim ID: ", cast_type=int)
+            claim = fetch_one("SELECT * FROM claims WHERE claim_id = ?", (claim_id,))
+            if claim:
+                print(dict(claim))
+            else:
+                print_error("Claim not found.")
+        elif choice == 0:
+            break
+
+def admin_policy_management():
+    while True:
+        display_header("POLICY MANAGEMENT")
+        print("1. View All Customer Policies")
+        print("2. Search Policy by ID")
+        print("0. Back")
+        choice = get_input("Select an option: ", cast_type=int)
+        
+        if choice == 1:
+            policies = fetch_all("SELECT cp.*, mp.policy_name, u.email FROM customer_policies cp JOIN master_policies mp ON cp.policy_id = mp.policy_id JOIN users u ON cp.customer_id = u.user_id")
+            if not policies:
+                print_info("No policies found.")
+            for p in policies:
+                print(f"CP ID: {p['customer_policy_id']} | Customer: {p['email']} | Policy: {p['policy_name']} | Status: {p['status']}")
+        elif choice == 2:
+            cp_id = get_input("Enter Customer Policy ID: ", cast_type=int)
+            policy = fetch_one("SELECT cp.*, mp.policy_name, u.email FROM customer_policies cp JOIN master_policies mp ON cp.policy_id = mp.policy_id JOIN users u ON cp.customer_id = u.user_id WHERE cp.customer_policy_id = ?", (cp_id,))
+            if policy:
+                print(dict(policy))
+            else:
+                print_error("Policy not found.")
         elif choice == 0:
             break
 
@@ -544,7 +606,9 @@ def admin_reports():
         display_header("SYSTEM REPORTS")
         print("1. Active Policies Report")
         print("2. Approved Claims Report")
-        print("3. View All Customer Policies")
+        print("3. Expired Policies Report")
+        print("4. Rejected Claims Report")
+        print("5. Agent Performance Report")
         print("0. Back")
         choice = get_input("Select an option: ", cast_type=int)
         
@@ -555,11 +619,26 @@ def admin_reports():
             count = fetch_one("SELECT COUNT(*) as c FROM claims WHERE status = 'APPROVED'")['c']
             print_info(f"Total Approved Claims: {count}")
         elif choice == 3:
-            policies = fetch_all("SELECT cp.*, mp.policy_name, u.email FROM customer_policies cp JOIN master_policies mp ON cp.policy_id = mp.policy_id JOIN users u ON cp.customer_id = u.user_id")
-            if not policies:
-                print_info("No policies found.")
-            for p in policies:
-                print(f"CP ID: {p['customer_policy_id']} | Customer: {p['email']} | Policy: {p['policy_name']} | Status: {p['status']}")
+            count = fetch_one("SELECT COUNT(*) as c FROM customer_policies WHERE status = 'EXPIRED'")['c']
+            print_info(f"Total Expired Policies: {count}")
+        elif choice == 4:
+            count = fetch_one("SELECT COUNT(*) as c FROM claims WHERE status = 'REJECTED'")['c']
+            print_info(f"Total Rejected Claims: {count}")
+        elif choice == 5:
+            agents = fetch_all("""
+                SELECT u.user_id, u.full_name, u.role,
+                (SELECT COUNT(*) FROM customer_policies cp WHERE cp.assigned_agent_id = u.user_id AND cp.status = 'ACTIVE') as policies_approved,
+                (SELECT COUNT(*) FROM customer_policies cp WHERE cp.assigned_agent_id = u.user_id AND cp.status = 'REJECTED') as policies_rejected,
+                (SELECT COUNT(*) FROM claims c WHERE c.claim_officer_id = u.user_id AND c.status = 'APPROVED') as claims_approved,
+                (SELECT COUNT(*) FROM claims c WHERE c.claim_officer_id = u.user_id AND c.status = 'REJECTED') as claims_rejected
+                FROM users u WHERE u.role IN ('POLICY_AGENT', 'CLAIM_OFFICER')
+            """)
+            for a in agents:
+                print(f"Agent/Officer: {a['full_name']} ({a['role']})")
+                if a['role'] == 'POLICY_AGENT':
+                    print(f"  Policies Approved: {a['policies_approved']} | Rejected: {a['policies_rejected']}")
+                else:
+                    print(f"  Claims Approved: {a['claims_approved']} | Rejected: {a['claims_rejected']}")
         elif choice == 0:
             break
 
@@ -569,8 +648,9 @@ def admin_dashboard():
         display_header("ADMIN DASHBOARD")
         print("1. User Management")
         print("2. Agent Management")
-        print("3. Claim Management")
-        print("4. Reports")
+        print("3. Policy Management")
+        print("4. Claim Management")
+        print("5. Reports")
         print("0. Logout")
         choice = get_input("Select an option: ", cast_type=int)
         
@@ -579,8 +659,10 @@ def admin_dashboard():
         elif choice == 2:
             admin_agent_management()
         elif choice == 3:
-            admin_claim_management()
+            admin_policy_management()
         elif choice == 4:
+            admin_claim_management()
+        elif choice == 5:
             admin_reports()
         elif choice == 0:
             current_user = None
