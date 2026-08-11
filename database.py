@@ -2,7 +2,6 @@ import sys
 import sqlite3
 import hashlib
 import contextlib
-import string
 import re
 import getpass
 
@@ -116,8 +115,11 @@ def getpass_asterisk(prompt="Password: "):
         
     return "".join(password)
 
-def get_input(prompt, cast_type=str, allow_empty=False, is_password=False):
+def get_input(prompt, cast_type=str, allow_empty=False, is_password=False, view_callback=None):
     """Helper to get and sanitize input from the user."""
+    if view_callback and "[v to view]" not in prompt:
+        prompt = prompt.rstrip(": ") + " [v to view]: "
+        
     while True:
         try:
             # Check if input is mocked (e.g. in unit tests) or sys.stdin is not a tty
@@ -129,6 +131,11 @@ def get_input(prompt, cast_type=str, allow_empty=False, is_password=False):
                     val = input(prompt)
             else:
                 val = input(prompt)
+                
+            if view_callback and val.strip().lower() == 'v':
+                view_callback()
+                continue
+                
             return sanitize_input(val, cast_type, allow_empty)
         except ValueError as e:
             print_error(str(e))
