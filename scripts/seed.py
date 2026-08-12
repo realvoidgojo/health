@@ -1,4 +1,4 @@
-import init_db
+from scripts import init_db
 from app.core.db.base_repository import execute_query, fetch_all, fetch_one
 from app.core.security import hash_password
 import random

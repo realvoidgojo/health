@@ -1,7 +1,7 @@
 import unittest
 import sqlite3
 import database
-import init_db
+from scripts import init_db
 import main
 from unittest.mock import patch
 from contextlib import contextmanager
