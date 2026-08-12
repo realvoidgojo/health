@@ -16,6 +16,8 @@ class TestHIMSApp(unittest.TestCase):
         # Patch the context manager to yield our persistent in-memory connection
         @contextmanager
         def mock_get_db_connection(db_path=None):
+            if db_path == "hims.db":
+                pass # it's fine, we are overriding it
             try:
                 self.conn.execute("PRAGMA foreign_keys = ON;")
                 yield self.conn
@@ -27,6 +29,11 @@ class TestHIMSApp(unittest.TestCase):
         self.patcher = patch('app.core.db.base_repository.get_db_connection', mock_get_db_connection)
         self.patcher.start()
         
+        # Bulletproof: Prevent any real DB connection during tests
+        self.sqlite_patcher = patch('sqlite3.connect', side_effect=lambda *args, **kwargs: 
+            self.conn if args and args[0] == ':memory:' else (_ for _ in ()).throw(Exception("Tests cannot access real database!")))
+        self.sqlite_patcher.start()
+        
         # Rebuild schema and seed data in memory
         sql_script = init_db.SCHEMA_SQL
         hashed_admin_pw = database.hash_password("admin123")
@@ -35,6 +42,7 @@ class TestHIMSApp(unittest.TestCase):
         self.conn.commit()
         
     def tearDown(self):
+        self.sqlite_patcher.stop()
         self.patcher.stop()
         self.conn.close()
 
