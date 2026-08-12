@@ -37,6 +37,11 @@ def validate_email(email: str) -> bool:
     pattern = r"^[\w\.-]+@[\w\.-]+\.\w+$"
     return bool(re.match(pattern, email))
 
+def validate_phone(phone: str) -> bool:
+    """Validates phone format to be 10 digits and optional +91 prefix."""
+    pattern = r"^(?:\+91[\-\s]?)?[6-9]\d{9}$"
+    return bool(re.match(pattern, phone))
+
 def validate_date(date_str: str) -> bool:
     """Validates date string format YYYY-MM-DD."""
     try:
@@ -81,37 +86,64 @@ def getpass_asterisk(prompt="Password: "):
     
     password = []
     try:
-        import termios
-        import tty
-        
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setraw(fd)
+        import os
+        if os.name == 'nt':
+            import msvcrt
             while True:
-                ch = sys.stdin.read(1)
-                if ch in ('\r', '\n'):
+                ch = msvcrt.getch()
+                if ch in (b'\r', b'\n'):
                     sys.stdout.write('\r\n')
                     sys.stdout.flush()
                     break
-                elif ch in ('\x08', '\x7f'):  # Backspace
+                elif ch in (b'\x08', b'\x7f'):  # Backspace
                     if password:
                         password.pop()
                         sys.stdout.write('\b \b')
                         sys.stdout.flush()
-                elif ch == '\x03':  # Ctrl+C
+                elif ch == b'\x03':  # Ctrl+C
                     sys.stdout.write('\r\n')
                     sys.stdout.flush()
                     raise KeyboardInterrupt
                 else:
-                    password.append(ch)
-                    sys.stdout.write('*')
-                    sys.stdout.flush()
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+                    try:
+                        ch_str = ch.decode('utf-8')
+                        password.append(ch_str)
+                        sys.stdout.write('*')
+                        sys.stdout.flush()
+                    except Exception:
+                        pass
+        else:
+            import termios
+            import tty
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                while True:
+                    ch = sys.stdin.read(1)
+                    if ch in ('\r', '\n'):
+                        sys.stdout.write('\r\n')
+                        sys.stdout.flush()
+                        break
+                    elif ch in ('\x08', '\x7f'):  # Backspace
+                        if password:
+                            password.pop()
+                            sys.stdout.write('\b \b')
+                            sys.stdout.flush()
+                    elif ch == '\x03':  # Ctrl+C
+                        sys.stdout.write('\r\n')
+                        sys.stdout.flush()
+                        raise KeyboardInterrupt
+                    else:
+                        password.append(ch)
+                        sys.stdout.write('*')
+                        sys.stdout.flush()
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     except Exception:
-        # Fallback if termios is not supported or non-interactive
-        return getpass.getpass(prompt)
+        # Fallback if neither termios nor msvcrt is supported or non-interactive
+        # Use an empty prompt because we already printed the prompt above
+        return getpass.getpass("")
         
     return "".join(password)
 

@@ -107,9 +107,9 @@ VALUES ('System Admin', 'admin@hims.com', '{admin_pw_placeholder}', '9999999999'
 
 -- Master Health Insurance Catalog
 INSERT INTO master_policies (policy_name, category, sum_insured, premium_amount, coverage_details) VALUES
-('Standard Individual Health Plan', 'Individual Plan', 500000.00, 12000.00, 'In-patient hospitalization, pre & post hospitalization (30/60 days), daycare procedures, ambulance cover.'),
-('Comprehensive Family Floater Plan', 'Family Floater Plan', 1000000.00, 24000.00, 'Coverage for spouse and up to 2 children. Cashless treatment across 5000+ hospitals, maternity benefit.'),
-('Senior Citizen Healthcare Shield', 'Senior Citizen Plan', 750000.00, 30000.00, 'Tailored for ages 60+. Pre-existing disease cover after 1 year, domiciliary hospitalization, annual free health checkup.');
+('Standard Individual Health Plan', 'Individual Plan', 500000.00, 7200.00, 'In-patient hospitalization, pre & post hospitalization (30/60 days), daycare procedures, ambulance cover.'),
+('Comprehensive Family Floater Plan', 'Family Floater Plan', 1000000.00, 18000.00, 'Coverage for spouse and up to 2 children. Cashless treatment across 5000+ hospitals, maternity benefit.'),
+('Senior Citizen Healthcare Shield', 'Senior Citizen Plan', 500000.00, 24000.00, 'Tailored for ages 60+. Pre-existing disease cover after 1 year, domiciliary hospitalization, annual free health checkup.');
 """
 
 def reset_database():

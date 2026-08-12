@@ -1,7 +1,7 @@
 import sys
 import textwrap
 from datetime import datetime
-from database import fetch_all, fetch_one, execute_query, hash_password, get_input, print_success, print_error, print_warning, print_info, Colors, validate_email, validate_date
+from database import fetch_all, fetch_one, execute_query, hash_password, get_input, print_success, print_error, print_warning, print_info, Colors, validate_email, validate_date, validate_phone
 
 current_user = None
 
@@ -76,7 +76,7 @@ def print_available_policies():
         print_card(f"[{p['policy_id']}] {p['policy_name']}", [
             ("Category", p['category']),
             ("Sum Insured", format_inr(p['sum_insured'])),
-            ("Premium", format_inr(p['premium_amount'])),
+            ("Premium", f"{format_inr(p['premium_amount'] / 12)}/mon (Billed Annually)"),
             ("Coverage Details", p['coverage_details'])
         ])
 
@@ -260,7 +260,11 @@ def register_user():
         print_error("Invalid email address format (e.g. user@example.com).")
         return
     password = get_input("Password: ", is_password=True)
-    phone = get_input("Phone Number: ")
+    while True:
+        phone = get_input("Phone Number: ")
+        if validate_phone(phone):
+            break
+        print_error("Invalid phone format. Use 10 digits with optional +91 prefix.")
     dob = get_input("Date of Birth (YYYY-MM-DD): ")
     if not validate_date(dob):
         print_error("Invalid Date of Birth format. Please use YYYY-MM-DD.")
@@ -376,11 +380,17 @@ def customer_profile_menu():
                     print_success("Profile updated.")
                 elif sub_choice == 2:
                     new_val = get_input("New Phone Number: ")
+                    if not validate_phone(new_val):
+                        print_error("Invalid phone format. Use 10 digits with optional +91 prefix.")
+                        continue
                     execute_query("UPDATE users SET phone = ? WHERE user_id = ?", (new_val, current_user['user_id']))
                     current_user['phone'] = new_val
                     print_success("Profile updated.")
                 elif sub_choice == 3:
                     new_val = get_input("New DOB (YYYY-MM-DD): ")
+                    if not validate_date(new_val):
+                        print_error("Invalid Date of Birth format. Please use YYYY-MM-DD.")
+                        continue
                     execute_query("UPDATE users SET date_of_birth = ? WHERE user_id = ?", (new_val, current_user['user_id']))
                     current_user['date_of_birth'] = new_val
                     print_success("Profile updated.")
@@ -440,15 +450,27 @@ def customer_policy_menu():
         elif choice == 3:
             print_my_policies()
         elif choice == 4:
-            policies = fetch_all("SELECT cp.*, mp.policy_name FROM customer_policies cp JOIN master_policies mp ON cp.suggested_policy_id = mp.policy_id WHERE cp.customer_id = ? AND cp.status = 'REJECTED' AND cp.suggested_policy_id IS NOT NULL", (current_user['user_id'],))
+            try:
+                dob = datetime.strptime(current_user['date_of_birth'], "%Y-%m-%d")
+                age = (datetime.now() - dob).days // 365
+            except Exception:
+                age = 30  # Default fallback
+                
+            print_info(f"Based on your age ({age} years), we recommend the following plans:")
+            if age >= 60:
+                policies = fetch_all("SELECT * FROM master_policies WHERE category = 'Senior Citizen Plan' AND is_active = 1")
+            else:
+                policies = fetch_all("SELECT * FROM master_policies WHERE category IN ('Individual Plan', 'Family Floater Plan') AND is_active = 1")
+                
             if not policies:
-                print_info("No suggested policies.")
+                print_info("No suggested policies found.")
             for p_row in policies:
                 p = dict(p_row)
-                print_card(f"SUGGESTION FOR REQUEST #{p['customer_policy_id']}", [
-                    ("Suggested Plan ID", p['suggested_policy_id']),
-                    ("Suggested Plan", p['policy_name']),
-                    ("Agent Remarks", p.get('agent_remarks') or 'None')
+                print_card(f"SUGGESTED: [{p['policy_id']}] {p['policy_name']}", [
+                    ("Category", p['category']),
+                    ("Sum Insured", format_inr(p['sum_insured'])),
+                    ("Premium", f"{format_inr(p['premium_amount'] / 12)}/mon (Billed Annually)"),
+                    ("Coverage Details", p['coverage_details'])
                 ])
         elif choice == 5:
             cp_id = get_input("Enter Customer Policy ID: ", cast_type=int, view_callback=print_my_policies)
@@ -789,8 +811,16 @@ def admin_agent_management():
             name = get_input("Full Name: ")
             email = get_input("Email: ")
             password = get_input("Password: ", is_password=True)
-            phone = get_input("Phone: ")
-            dob = get_input("DOB (YYYY-MM-DD): ")
+            while True:
+                phone = get_input("Phone: ")
+                if validate_phone(phone):
+                    break
+                print_error("Invalid phone format. Use 10 digits with optional +91 prefix.")
+            while True:
+                dob = get_input("DOB (YYYY-MM-DD): ")
+                if validate_date(dob):
+                    break
+                print_error("Invalid Date of Birth format. Please use YYYY-MM-DD.")
             role = get_input("Role (POLICY_AGENT / CLAIM_OFFICER): ").upper()
             
             if role not in ['POLICY_AGENT', 'CLAIM_OFFICER']:
@@ -823,6 +853,9 @@ def admin_agent_management():
             try:
                 if sub == 1:
                     phone = get_input("New Phone: ")
+                    if not validate_phone(phone):
+                        print_error("Invalid phone format.")
+                        continue
                     execute_query("UPDATE users SET phone = ? WHERE user_id = ?", (phone, u_id))
                     print_success("Phone updated.")
                 elif sub == 2:
