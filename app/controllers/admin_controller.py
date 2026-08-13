@@ -145,7 +145,7 @@ class AdminController:
                 staff_id = get_input(
                     "Enter Agent/Officer User ID: ", 
                     cast_type=int,
-                    view_callback=lambda: Menus.print_users(AdminService.get_users_by_role(Role.POLICY_AGENT))
+                    view_callback=lambda: Menus.print_users(AdminService.get_staff_members())
                 )
                 print("\n1. Update Phone Number")
                 print("2. Toggle Active Status")

@@ -190,6 +190,9 @@ class CustomerController:
                     view_callback=lambda: Menus.print_my_policies(PolicyRepository.get_customer_policies(user['user_id']))
                 )
                 amt = get_input("Enter Claim Amount: ₹", cast_type=float)
+                if amt <= 0:
+                    print_error("Claim amount must be greater than 0.")
+                    continue
                 reason = get_input("Enter Claim Reason: ")
                 try:
                     CustomerService.file_claim(user['user_id'], cp_id, amt, reason)

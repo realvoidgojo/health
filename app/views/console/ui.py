@@ -156,6 +156,7 @@ def print_card(title, fields, width=58):
         
         # Max width available for the value portion
         val_width = width - len(key_str) - 1
+        val_width = max(1, val_width)
         
         # Wrap the text so it fits within the value portion
         wrapped_lines = textwrap.wrap(value_str, width=val_width)

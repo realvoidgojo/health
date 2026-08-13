@@ -39,7 +39,7 @@ class UserRepository:
     @staticmethod
     def get_random_active_agent() -> Optional[User]:
         return fetch_one(
-            "SELECT user_id FROM users WHERE role = ? AND is_active = 1 LIMIT 1", 
+            "SELECT user_id FROM users WHERE role = ? AND is_active = 1 ORDER BY RANDOM() LIMIT 1", 
             (Role.POLICY_AGENT,)
         )
         

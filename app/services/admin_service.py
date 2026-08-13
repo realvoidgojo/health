@@ -5,9 +5,10 @@ from app.repositories.claim_repository import ClaimRepository
 from app.repositories.reactivation_repository import ReactivationRepository
 from app.repositories.report_repository import ReportRepository
 from app.core.security import hash_password
-from app.core.validators import validate_email, validate_phone, validate_date
+from app.core.validators import validate_email, validate_phone, validate_date, validate_password
 from app.core.exceptions import ValidationError, BusinessRuleError
 from app.core.constants import Role, ReactivationStatus, ClaimStatus, ClaimAction
+import sqlite3
 
 class AdminService:
     # --- User Management ---
@@ -52,11 +53,15 @@ class AdminService:
     # --- Agent/Staff Management ---
     @staticmethod
     def add_staff(full_name: str, email: str, password: str, phone: str, date_of_birth: str, role: str):
+        email = email.strip().lower()
         if role not in (Role.POLICY_AGENT, Role.CLAIM_OFFICER):
             raise ValidationError("Invalid staff role.")
             
         if not validate_email(email):
             raise ValidationError("Invalid email format.")
+            
+        if not validate_password(password):
+            raise ValidationError("Password must be at least 8 characters long and contain at least one letter and one number.")
             
         if not validate_phone(phone):
             raise ValidationError("Invalid phone format.")
@@ -64,11 +69,11 @@ class AdminService:
         if not validate_date(date_of_birth):
             raise ValidationError("Invalid date format.")
             
-        if UserRepository.get_by_email(email):
-            raise ValidationError("An account with this email already exists.")
-            
         hashed = hash_password(password)
-        UserRepository.create_staff(full_name, email, hashed, phone, date_of_birth, role)
+        try:
+            UserRepository.create_staff(full_name, email, hashed, phone, date_of_birth, role)
+        except sqlite3.IntegrityError:
+            raise ValidationError("An account with this email already exists.")
         
     @staticmethod
     def get_staff_members():

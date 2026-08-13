@@ -48,7 +48,7 @@ class TestHIMSApp(unittest.TestCase):
 
     def test_user_registration_and_duplicate_email(self):
         # 1. Registration
-        with patch('builtins.input', side_effect=['Test User', 'test@example.com', 'pass123', '9876543210', '1990-01-01']):
+        with patch('builtins.input', side_effect=['Test User', 'test@example.com', 'Password123', '9876543210', '1990-01-01']):
             main.register_user()
             
         user = database.fetch_one("SELECT * FROM users WHERE email = 'test@example.com'")
@@ -56,7 +56,7 @@ class TestHIMSApp(unittest.TestCase):
         self.assertEqual(user['full_name'], 'Test User')
         
         # 2. Duplicate Email Registration
-        with patch('builtins.input', side_effect=['Test User 2', 'test@example.com', 'pass123', '9876543210', '1991-01-01']):
+        with patch('builtins.input', side_effect=['Test User 2', 'test@example.com', 'Password123', '9876543210', '1991-01-01']):
             with patch('app.controllers.auth_controller.print_error') as mock_error:
                 main.register_user()
                 mock_error.assert_called_with("An account with this email already exists.")
@@ -244,7 +244,7 @@ class TestHIMSApp(unittest.TestCase):
 
     def test_admin_agent_management_extended(self):
         # 1. Add Agent (choice 1)
-        with patch('builtins.input', side_effect=['1', 'New Staff', 'staff@hims.com', 'pass123', '9876543210', '1990-01-01', 'POLICY_AGENT', '0']):
+        with patch('builtins.input', side_effect=['1', 'New Staff', 'staff@hims.com', 'Password123', '9876543210', '1990-01-01', 'POLICY_AGENT', '0']):
             main.admin_agent_management()
 
         staff = database.fetch_one("SELECT * FROM users WHERE email = 'staff@hims.com'")

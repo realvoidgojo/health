@@ -1,7 +1,9 @@
 def format_inr(amount: float) -> str:
     """Formats a float to INR currency string."""
     try:
-        s, *d = str(float(amount)).split('.')
+        amt = float(amount)
+        is_negative = amt < 0
+        s, *d = str(abs(amt)).split('.')
         d = d[0] if d else '00'
         if len(d) == 1:
             d += '0'
@@ -18,6 +20,7 @@ def format_inr(amount: float) -> str:
             groups.reverse()
             s = ",".join(groups) + "," + last_3
             
-        return f"₹{s}.{d}"
+        prefix = "₹-" if is_negative else "₹"
+        return f"{prefix}{s}.{d}"
     except (ValueError, TypeError):
         return "₹0.00"

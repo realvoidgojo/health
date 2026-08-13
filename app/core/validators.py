@@ -12,9 +12,13 @@ def validate_phone(phone: str) -> bool:
     return bool(re.match(pattern, phone))
 
 def validate_date(date_str: str) -> bool:
-    """Validates date string format YYYY-MM-DD."""
+    """Validates date string format YYYY-MM-DD and basic bounds."""
     try:
-        datetime.strptime(date_str, "%Y-%m-%d")
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        age = (datetime.now() - dt).days / 365
+        # Must not be in future, and age must be < 120
+        if dt > datetime.now() or age > 120:
+            return False
         return True
     except ValueError:
         return False
@@ -26,3 +30,13 @@ def calculate_age(dob: str) -> int:
         return (datetime.now() - dob_date).days // 365
     except Exception:
         return 30  # Default fallback
+
+def validate_password(password: str) -> bool:
+    """Validates password strength (min 8 chars, at least one letter and one number)."""
+    if len(password) < 8:
+        return False
+    if not any(char.isalpha() for char in password):
+        return False
+    if not any(char.isdigit() for char in password):
+        return False
+    return True

@@ -62,11 +62,15 @@ class CustomerService:
         if policy['status'] != PolicyStatus.EXPIRED:
             raise BusinessRuleError("Only expired policies can be renewed.")
             
-        # Parse current expiry, add 1 year
+        # Parse current expiry, add 1 year safely
         from datetime import datetime
         try:
             curr_expiry = datetime.strptime(policy['expiry_date'], "%Y-%m-%d")
-            new_expiry = curr_expiry.replace(year=curr_expiry.year + 1).strftime("%Y-%m-%d")
+            try:
+                new_expiry = curr_expiry.replace(year=curr_expiry.year + 1).strftime("%Y-%m-%d")
+            except ValueError:
+                # Leap year handling (Feb 29 -> Mar 1)
+                new_expiry = curr_expiry.replace(year=curr_expiry.year + 1, month=3, day=1).strftime("%Y-%m-%d")
         except Exception:
             new_expiry = "2099-12-31" # Fallback
             
@@ -78,8 +82,8 @@ class CustomerService:
         if not policy:
             raise ValidationError("Policy not found.")
             
-        if policy['status'] != PolicyStatus.ACTIVE:
-            raise BusinessRuleError("Only active policies can be cancelled.")
+        if policy['status'] not in (PolicyStatus.ACTIVE, PolicyStatus.PENDING_APPROVAL):
+            raise BusinessRuleError("Only active or pending policies can be cancelled.")
             
         PolicyRepository.cancel_policy(cp_id, customer_id)
 
@@ -92,8 +96,14 @@ class CustomerService:
         if policy['status'] != PolicyStatus.ACTIVE:
             raise BusinessRuleError("Claims can only be filed against active policies.")
             
-        if claim_amount > policy['sum_insured']:
-            raise BusinessRuleError(f"Claim amount cannot exceed sum insured (₹{policy['sum_insured']}).")
+        existing_claims = ClaimRepository.get_claims_by_customer(customer_id)
+        for claim in existing_claims:
+            if claim['customer_policy_id'] == cp_id and claim['status'] in (ClaimStatus.PENDING_ASSIGNMENT, ClaimStatus.UNDER_REVIEW, ClaimStatus.NEEDS_UPDATE):
+                raise BusinessRuleError("A claim is already pending review for this policy.")
+                
+        cumulative = ClaimRepository.get_cumulative_claim_amount(cp_id)
+        if claim_amount + cumulative > policy['sum_insured']:
+            raise BusinessRuleError(f"Claim amount cannot exceed sum insured. Remaining cover: ₹{policy['sum_insured'] - cumulative}")
             
         ClaimRepository.create_claim(cp_id, customer_id, claim_amount, claim_reason)
 

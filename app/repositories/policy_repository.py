@@ -76,8 +76,8 @@ class PolicyRepository:
         
     @staticmethod
     def cancel_policy(cp_id: int, customer_id: int) -> int:
-        sql = "UPDATE customer_policies SET status = ? WHERE customer_policy_id = ? AND customer_id = ? AND status = ?"
-        return execute_query(sql, (PolicyStatus.CANCELLED, cp_id, customer_id, PolicyStatus.ACTIVE))
+        sql = "UPDATE customer_policies SET status = ? WHERE customer_policy_id = ? AND customer_id = ? AND status IN (?, ?)"
+        return execute_query(sql, (PolicyStatus.CANCELLED, cp_id, customer_id, PolicyStatus.ACTIVE, PolicyStatus.PENDING_APPROVAL))
         
     @staticmethod
     def get_pending_policies_by_agent(agent_id: int) -> List[CustomerPolicy]:
@@ -121,6 +121,6 @@ class PolicyRepository:
         return fetch_all(sql)
 
     @staticmethod
-    def update_agent_for_pending_policies(customer_id: int, agent_id: int) -> int:
-        sql = "UPDATE customer_policies SET assigned_agent_id = ? WHERE customer_id = ? AND status = ?"
-        return execute_query(sql, (agent_id, customer_id, PolicyStatus.PENDING_APPROVAL))
+    def update_agent_for_all_policies(customer_id: int, agent_id: int) -> int:
+        sql = "UPDATE customer_policies SET assigned_agent_id = ? WHERE customer_id = ? AND status IN (?, ?)"
+        return execute_query(sql, (agent_id, customer_id, PolicyStatus.PENDING_APPROVAL, PolicyStatus.ACTIVE))
